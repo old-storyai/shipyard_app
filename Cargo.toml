@@ -1,0 +1,13 @@
+[package]
+authors = ["Cole Lawrence <cole@colelawrence.com>"]
+edition = "2018"
+name = "shipyard_app"
+version = "0.1.0"
+
+[features]
+default = []
+startup-stages = []
+
+[dependencies]
+shipyard = {path = "../shipyard", features = ["panic"], default-features = false}
+tracing = "0.1"
