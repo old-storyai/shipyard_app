@@ -17,8 +17,8 @@ pub struct TreePlugin;
 
 impl Plugin for TreePlugin {
     fn build<'a>(&self, app: &mut AppBuilder) {
-        app.add_plugin(EventPlugin::<MoveCmd>::default())
-            .update_pack::<ChildOf>()
+        app.add_plugin(EventPlugin::<reordering::MoveCmd>::default())
+            .update_pack::<ChildOf>() // enable change tracking in shipyard for the ChildOf component
             .add_systems_to_stage(stage::POST_UPDATE, |workload: &mut WorkloadBuilder| {
                 workload
                     .with_system(system!(reordering::tree_reordering))
