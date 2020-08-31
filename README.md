@@ -2,7 +2,7 @@
 
 `shipyard_app` aims to provide a standardized "Plugin" interface on top of the [`shipyard` ECS crate](https://github.com/leudz/shipyard).
 
-This allows for codebases to more easily divide up many systems and workloads without having to declare all systems in one big workload buidler.
+This allows for codebases to more easily divide up many systems and workloads without having to declare all systems in one big workload builder in the root of an application.
 
 
 
