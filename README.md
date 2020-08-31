@@ -7,6 +7,10 @@ This allows for codebases to more easily divide up many systems and workloads wi
 
 Example [from test/tree.rs](https://github.com/storyscript/shipyard_app/blob/master/src/test/tree.rs)
 ```rust
+use shipyard_app::{AppBuilder, EventPlugin, Plugin, stage};
+use shipyard::{system, WorkloadBuilder};
+...
+
 /// Registers
 #[derive(Default)]
 pub struct TreePlugin;
