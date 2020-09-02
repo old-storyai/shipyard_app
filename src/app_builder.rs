@@ -118,7 +118,7 @@ impl AppBuilder {
     ///  3. Pull any data you need out from the [World], and repeat.
     pub fn finish(self) -> App {
         let AppBuilder {
-            mut world,
+            world,
             stage_workloads,
             startup_workloads,
         } = self;
@@ -130,7 +130,7 @@ impl AppBuilder {
             .ordered
             .into_iter()
             .map(|(name, mut builder)| {
-                builder.add_to_world(&mut world).unwrap();
+                builder.add_to_world(&world).unwrap();
                 world.run_workload(name);
             })
             .count();
@@ -139,7 +139,7 @@ impl AppBuilder {
             .ordered
             .into_iter()
             .map(|(name, mut builder)| {
-                builder.add_to_world(&mut world).unwrap();
+                builder.add_to_world(&world).unwrap();
                 name
             })
             .collect();
