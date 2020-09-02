@@ -35,7 +35,7 @@ pub type UniqueMoveCommands<'a> = UniqueViewMut<'a, Events<MoveCmd>>;
 pub struct TreePlugin;
 
 impl Plugin for TreePlugin {
-    fn build<'a>(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut AppBuilder) {
         app.add_plugin(EventPlugin::<MoveCmd>::default())
             .update_pack::<ChildOf>()
             .add_systems_to_stage(stage::POST_UPDATE, |workload: &mut WorkloadBuilder| {
