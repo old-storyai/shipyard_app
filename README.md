@@ -28,7 +28,9 @@ impl Plugin for TreePlugin {
 }
 ```
 
+## Usage
 
+At the moment, shipyard_app is based off the master branch of https://github.com/leudz/shipyard, so until the updates to WorkloadBuilder are published, you must be on the master branch of shipyard.
 
 The initial interface takes a lot of inspiration from [bevy_app]. Thanks @cart!
 

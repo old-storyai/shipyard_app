@@ -9,5 +9,5 @@ default = []
 startup-stages = []
 
 [dependencies]
-shipyard = {path = "../shipyard", features = ["panic"], default-features = false}
+shipyard = {version = "*", path = "../shipyard", features = ["panic"], default-features = false}
 tracing = "0.1"
