@@ -477,13 +477,12 @@ impl AppBuilder {
     //     self
     // }
 
-    // pub fn add_event<T>(&mut self) -> &mut Self
-    // where
-    //     T: Send + Sync + 'static,
-    // {
-    //     self.add_resource(Events::<T>::default())
-    //         .add_system_to_stage(stage::EVENT_UPDATE, Events::<T>::update_system.system())
-    // }
+    pub fn add_event<T>(&mut self) -> &mut Self
+    where
+        T: Send + Sync + 'static,
+    {
+        self.add_plugin(crate::EventPlugin::<T>::default())
+    }
 
     // pub fn init_resource<R>(&mut self) -> &mut Self
     // where
