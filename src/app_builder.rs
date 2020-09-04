@@ -16,10 +16,15 @@ use tracing::*;
 // use bevy_ecs::{FromResources, IntoQuerySystem, Resources, System, World};
 
 #[derive(Clone, Default)]
-struct PluginId(Vec<&'static str>);
+struct PluginId(Vec<(TypeId, &'static str)>);
 impl PluginId {
+    fn contains(&self, type_id: TypeId) -> bool {
+        self.0
+            .iter()
+            .any(|(existing_type_id, _)| type_id.eq(existing_type_id))
+    }
     fn push<T: 'static>(&mut self) {
-        self.0.push(type_name::<T>());
+        self.0.push((TypeId::of::<T>(), type_name::<T>()));
     }
     fn pop(&mut self) {
         self.0.pop();
@@ -38,7 +43,7 @@ impl std::fmt::Debug for PluginId {
 impl std::fmt::Display for PluginId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut needs_separator = false;
-        for type_name in self.0.iter() {
+        for (_, type_name) in self.0.iter() {
             if needs_separator {
                 f.write_str(">")?;
             } else {
@@ -53,7 +58,11 @@ impl std::fmt::Display for PluginId {
 /// Configure [App]s using the builder pattern
 pub struct AppBuilder {
     pub world: World,
-    /// track the currently being used plugin (this is a stack since some plugins depend on other plugins)
+    stage_workloads: Workloads,
+    startup_workloads: Workloads,
+    /// track the plugins previously added to enable checking that plugin peer dependencies are satisified
+    track_added_plugins: HashMap<TypeId, PluginId>,
+    /// track the currently being used plugin ([PluginId] is a stack since some plugins add other plugins creating a nest)
     // TODO: Track "Plugin"s for each thing
     track_current_plugin: PluginId,
     /// take a record of type names as we come across them for diagnostics
@@ -64,8 +73,6 @@ pub struct AppBuilder {
     track_unique_dependencies: HashMap<TypeId, Vec<(PluginId, &'static str)>>,
     /// update component storage type id to list of (plugin type id, reason string)
     track_update_packed: HashMap<TypeId, Vec<(PluginId, &'static str)>>,
-    startup_workloads: Workloads,
-    stage_workloads: Workloads,
 }
 
 impl Uniques<'_> {
@@ -169,13 +176,14 @@ impl AppBuilder {
     pub fn finish(self) -> App {
         let AppBuilder {
             world,
-            track_type_names,
+            stage_workloads,
+            startup_workloads,
+            track_added_plugins: _,
             track_current_plugin: _,
+            track_type_names,
             track_update_packed: _,
             track_uniques,
             mut track_unique_dependencies,
-            stage_workloads,
-            startup_workloads,
         } = self;
 
         // trace! out Unique dependencies for diagnostics
@@ -245,13 +253,14 @@ impl AppBuilder {
     fn empty() -> AppBuilder {
         let world = shipyard::World::new();
         AppBuilder {
+            stage_workloads: Workloads::new(),
+            startup_workloads: Workloads::new(),
+            track_added_plugins: Default::default(),
             track_current_plugin: Default::default(),
             track_type_names: Default::default(),
-            track_update_packed: Default::default(),
             track_uniques: Default::default(),
             track_unique_dependencies: Default::default(),
-            startup_workloads: Workloads::new(),
-            stage_workloads: Workloads::new(),
+            track_update_packed: Default::default(),
             world,
         }
     }
@@ -318,6 +327,23 @@ impl AppBuilder {
             .entry(unique_type_id)
             .or_default()
             .push((self.track_current_plugin.clone(), dependency_reason));
+        self
+    }
+
+    /// Declare that this builder has a dependency on the following plugin.
+    pub fn depends_on_plugin<T>(&mut self, dependency_reason: &'static str) -> &mut Self
+    where
+        T: Plugin,
+    {
+        let plugin_type_id = self.tracked_type_id_of::<T>();
+        if !self.track_added_plugins.contains_key(&plugin_type_id) {
+            panic!(
+                "\"{}\" depends on \"{}\": {}",
+                self.track_current_plugin,
+                type_name::<T>(),
+                dependency_reason
+            );
+        }
         self
     }
 
@@ -510,9 +536,27 @@ impl AppBuilder {
     where
         T: Plugin,
     {
+        let plugin_type_id = self.tracked_type_id_of::<T>();
+        if let Some(plugin_id) = self.track_added_plugins.get(&plugin_type_id) {
+            panic!(
+                "Plugin ({}) cannot add plugin as it's already added as \"{}\"",
+                self.track_current_plugin, plugin_id
+            );
+        }
+
+        if self.track_current_plugin.contains(plugin_type_id) {
+            panic!(
+                "Plugin ({}) cannot add plugin ({}) as it would cause a cycle",
+                self.track_current_plugin,
+                self.track_type_names.get(&plugin_type_id).unwrap_or(&""),
+            );
+        }
+
         self.track_current_plugin.push::<T>();
         plugin.build(self);
         trace!("added plugin: {}", self.track_current_plugin);
+        self.track_added_plugins
+            .insert(plugin_type_id, self.track_current_plugin.clone());
         self.track_current_plugin.pop();
         self
     }
