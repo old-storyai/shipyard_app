@@ -213,7 +213,7 @@ impl AppBuilder {
     /// Declare that this builder has a dependency on the following unique.
     ///
     /// If the unique dependency is not satisfied by the time [AppBuilder::finish] is called, then the finish call will panic.
-    pub fn add_unique_dependency<T>(&mut self, dependency_reason: &'static str) -> &mut Self
+    pub fn depends_on_unique<T>(&mut self, dependency_reason: &'static str) -> &mut Self
     where
         T: Send + Sync + 'static,
     {
