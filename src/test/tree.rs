@@ -460,7 +460,7 @@ mod tests {
             vm_child_of.update_pack();
         });
 
-        builder.add_systems(|workload: &mut WorkloadBuilder| {
+        builder.add_systems(|workload| {
             workload
                 .with_system(system!(|mut events: UniqueMoveCommands| events.update()))
                 .with_system(system!(reordering::tree_reordering))

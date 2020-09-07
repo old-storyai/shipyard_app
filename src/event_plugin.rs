@@ -20,7 +20,7 @@ where
     fn build<'a>(&self, app: &mut AppBuilder) {
         app.add_unique(Events::<T>::default()).add_systems_to_stage(
             stage::EVENT_UPDATE,
-            |workload: &mut WorkloadBuilder| {
+            |workload| {
                 workload.with_system(system!(|mut uvm_events: UniqueViewMut<Events<T>>| {
                     uvm_events.update()
                 }));

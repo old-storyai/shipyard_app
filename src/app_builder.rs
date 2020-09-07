@@ -187,14 +187,11 @@ impl AppBuilder {
                     .insert(type_id, vec![(self.track_current_plugin.clone(), reason)]);
                 self.world
                     .run(|mut vm_to_pack: ViewMut<T>| vm_to_pack.update_pack());
-                self.add_systems_to_stage(
-                    stage::LAST,
-                    Box::new(|workload: &mut WorkloadBuilder| {
-                        workload
-                            .with_system(system!(|mut vm_to_clear: ViewMut<T>| vm_to_clear
-                                .clear_inserted_and_modified()));
-                    }),
-                )
+                self.add_systems_to_stage(stage::LAST, |workload| {
+                    workload.with_system(system!(
+                        |mut vm_to_clear: ViewMut<T>| vm_to_clear.clear_inserted_and_modified()
+                    ));
+                })
             }
         }
     }
