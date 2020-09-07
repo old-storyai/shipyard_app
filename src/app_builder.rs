@@ -1,59 +1,17 @@
 #[cfg(feature = "startup-stages")]
 use crate::startup_stage;
-use crate::{
-    app::App,
-    // app::{App, AppExit},
-    // event::Events,
-    plugin::Plugin,
-    stage,
-};
+use crate::{app::App, plugin::Plugin, stage};
 use shipyard::*;
 use std::{
     any::{type_name, TypeId},
     collections::HashMap,
 };
 use tracing::*;
-// use bevy_ecs::{FromResources, IntoQuerySystem, Resources, System, World};
 
-#[derive(Clone, Default)]
-struct PluginId(Vec<(TypeId, &'static str)>);
-impl PluginId {
-    fn contains(&self, type_id: TypeId) -> bool {
-        self.0
-            .iter()
-            .any(|(existing_type_id, _)| type_id.eq(existing_type_id))
-    }
-    fn push<T: 'static>(&mut self) {
-        self.0.push((TypeId::of::<T>(), type_name::<T>()));
-    }
-    fn pop(&mut self) {
-        self.0.pop();
-    }
-}
-
-impl std::fmt::Debug for PluginId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("(")?;
-        std::fmt::Display::fmt(&self, f)?;
-        f.write_str(")")?;
-        Ok(())
-    }
-}
-
-impl std::fmt::Display for PluginId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut needs_separator = false;
-        for (_, type_name) in self.0.iter() {
-            if needs_separator {
-                f.write_str(">")?;
-            } else {
-                needs_separator = true;
-            }
-            f.write_str(*type_name)?;
-        }
-        Ok(())
-    }
-}
+mod plugin_id;
+mod workloads;
+use plugin_id::PluginId;
+use workloads::Workloads;
 
 /// Configure [App]s using the builder pattern
 pub struct AppBuilder {
@@ -74,64 +32,6 @@ pub struct AppBuilder {
     /// update component storage type id to list of (plugin type id, reason string)
     track_update_packed: HashMap<TypeId, Vec<(PluginId, &'static str)>>,
 }
-
-impl Uniques<'_> {
-    pub fn add_unique<T: 'static + Send + Sync>(&self, component: T) {
-        self.world.add_unique(component)
-    }
-}
-
-pub struct Uniques<'a> {
-    world: &'a World,
-}
-
-struct Workloads {
-    ordered: Vec<(&'static str, WorkloadBuilder)>,
-}
-
-impl Workloads {
-    fn new() -> Self {
-        Self {
-            ordered: Vec::new(),
-        }
-    }
-
-    fn add_stage(&mut self, stage: &'static str) {
-        for (name, _) in self.ordered.iter() {
-            if *name == stage {
-                return;
-            }
-        }
-
-        self.ordered.push((stage, WorkloadBuilder::new(stage)));
-    }
-
-    fn add_systems_to_stage(&mut self, stage_name: &'static str, apply_fn: impl WorkloadApplyFn) {
-        // store so we can take if it's called, and address borrow checker issues that move the apply_fn
-        let mut apply_fn_opt = Some(apply_fn);
-        self.ordered = self
-            .ordered
-            .drain(..)
-            .map(|(name, mut workload_builder)| {
-                if name == stage_name {
-                    if let Some(apply_fn_first_time) = apply_fn_opt.take() {
-                        apply_fn_first_time(&mut workload_builder);
-                        return (name, workload_builder);
-                    }
-                }
-
-                (name, workload_builder)
-            })
-            .collect();
-
-        if apply_fn_opt.is_some() {
-            // apply function not called
-            panic!("unknown stage '{}'", stage_name)
-        }
-    }
-}
-
-pub trait WorkloadApplyFn = Fn(&mut WorkloadBuilder);
 
 impl AppBuilder {
     pub fn new() -> AppBuilder {
@@ -164,10 +64,8 @@ impl AppBuilder {
 }
 
 impl AppBuilder {
-    /// In contrast to Bevy, you `finish` to get a function to create the running app, which you can then call the `update` function on.
-    ///
-    /// So, the general approach to running a Shipyard App is to create a new shipyard [World],
-    /// then pass that world into [App::build]. Then, after adding your plugins, you can call this [AppBuilder::start] to get an [App].
+    /// The general approach to running a Shipyard App is to create a new shipyard [World],
+    /// then pass that world into [App::build]. Then, after adding your plugins, you can call this [AppBuilder::finish] to get an [App].
     ///
     /// With this App, you can:
     ///  1. Update any Uniques first or use [World::run_with_data] to prime the rest of the systems, then
@@ -394,7 +292,10 @@ impl AppBuilder {
     //     self.add_system_to_stage(stage::UPDATE, system)
     // }
 
-    pub fn add_systems(&mut self, workload_builder: impl WorkloadApplyFn) -> &mut Self {
+    pub fn add_systems<F>(&mut self, workload_builder: F) -> &mut Self
+    where
+        F: FnOnce(&mut WorkloadBuilder),
+    {
         self.add_systems_to_stage(stage::UPDATE, workload_builder)
     }
 
@@ -426,11 +327,14 @@ impl AppBuilder {
     // }
 
     #[cfg(feature = "startup-stages")]
-    pub fn add_startup_systems_to_stage(
+    pub fn add_startup_systems_to_stage<F>(
         &mut self,
         stage_name: &'static str,
-        workload_builder: impl WorkloadApplyFn,
-    ) -> &mut Self {
+        workload_builder: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut WorkloadBuilder),
+    {
         self.startup_workloads
             .add_systems_to_stage(stage_name, workload_builder);
         self
@@ -470,11 +374,14 @@ impl AppBuilder {
     //     )
     // }
 
-    pub fn add_systems_to_stage(
+    pub fn add_systems_to_stage<F>(
         &mut self,
         stage_name: &'static str,
-        workload_builder: impl WorkloadApplyFn,
-    ) -> &mut Self {
+        workload_builder: F,
+    ) -> &mut Self
+    where
+        F: FnOnce(&mut WorkloadBuilder),
+    {
         self.stage_workloads
             .add_systems_to_stage(stage_name, workload_builder);
 

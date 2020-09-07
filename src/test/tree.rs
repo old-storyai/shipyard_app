@@ -38,7 +38,7 @@ impl Plugin for TreePlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.add_plugin(EventPlugin::<MoveCmd>::default())
             .update_pack::<ChildOf>("to fix ParentIndex & SiblingIndex components on changes")
-            .add_systems_to_stage(stage::POST_UPDATE, |workload: &mut WorkloadBuilder| {
+            .add_systems_to_stage(stage::POST_UPDATE, |workload| {
                 workload
                     .with_system(system!(reordering::tree_reordering))
                     .with_system(system!(indexing::tree_indexing));

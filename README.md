@@ -4,8 +4,8 @@
 
 This allows for codebases to more easily divide up many systems and workloads without having to declare all systems in one big workload builder in the root of an application.
 
-
 Example [from test/tree.rs](https://github.com/storyscript/shipyard_app/blob/master/src/test/tree.rs)
+
 ```rust
 use shipyard_app::{AppBuilder, EventPlugin, Plugin, stage};
 use shipyard::{system, WorkloadBuilder};
@@ -17,9 +17,9 @@ pub struct TreePlugin;
 
 impl Plugin for TreePlugin {
     fn build<'a>(&self, app: &mut AppBuilder) {
-        app.add_plugin(EventPlugin::<reordering::MoveCmd>::default())
-            .update_pack::<ChildOf>() // enable change tracking in shipyard for the ChildOf component
-            .add_systems_to_stage(stage::POST_UPDATE, |workload: &mut WorkloadBuilder| {
+        app.add_event::<reordering::MoveCmd>()
+            .update_pack::<ChildOf>("to fix ParentIndex & SiblingIndex components on changes") // enable change tracking in shipyard for the ChildOf component
+            .add_systems_to_stage(stage::POST_UPDATE, |workload| {
                 workload
                     .with_system(system!(reordering::tree_reordering))
                     .with_system(system!(indexing::tree_indexing));
