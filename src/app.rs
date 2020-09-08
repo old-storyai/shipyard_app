@@ -35,10 +35,12 @@ impl App {
         }
     }
 
+    #[track_caller]
     pub fn run<'s, B, R, S: shipyard::System<'s, (), B, R>>(&'s self, s: S) -> R {
         self.world.try_run(s).unwrap()
     }
 
+    #[track_caller]
     pub fn run_with_data<'s, Data, B, R, S: shipyard::System<'s, (Data,), B, R>>(
         &'s self,
         s: S,
