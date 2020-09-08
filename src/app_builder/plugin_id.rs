@@ -30,7 +30,7 @@ impl std::fmt::Display for PluginId {
         let mut needs_separator = false;
         for (_, type_name) in self.0.iter() {
             if needs_separator {
-                f.write_str(">")?;
+                f.write_str(" → ")?;
             } else {
                 needs_separator = true;
             }
