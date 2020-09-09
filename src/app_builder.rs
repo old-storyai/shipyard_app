@@ -204,9 +204,7 @@ impl AppBuilder {
                 self.world
                     .run(|mut vm_to_pack: ViewMut<T>| vm_to_pack.update_pack());
                 self.add_systems_to_stage(stage::LAST, |workload| {
-                    workload.with_system(system!(
-                        |mut vm_to_clear: ViewMut<T>| vm_to_clear.clear_inserted_and_modified()
-                    ));
+                    workload.with_system(system!(reset_update_pack::<T>));
                 })
             }
         }
@@ -480,4 +478,9 @@ impl AppBuilder {
         self.track_current_plugin.pop();
         self
     }
+}
+
+fn reset_update_pack<T>(mut vm_to_clear: ViewMut<T>) {
+    vm_to_clear.clear_inserted_and_modified();
+    vm_to_clear.take_deleted();
 }
