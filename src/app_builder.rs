@@ -71,6 +71,10 @@ impl AppBuilder {
     ///  1. Update any Uniques first or use [World::run_with_data] to prime the rest of the systems, then
     ///  2. Call the [App::update()] function, and
     ///  3. Pull any data you need out from the [World], and repeat.
+    ///
+    /// # Panics
+    /// May panic if there are unmet unique dependencies or if there is an error adding workloads to shipyard.
+    #[track_caller]
     pub fn finish(self) -> App {
         let AppBuilder {
             world,
