@@ -21,10 +21,15 @@ where
         app.add_unique(Events::<T>::default()).add_systems_to_stage(
             stage::EVENT_UPDATE,
             |workload| {
-                workload.with_system(system!(|mut uvm_events: UniqueViewMut<Events<T>>| {
-                    uvm_events.update()
-                }));
+                workload.with_system(system!(update_events::<T>));
             },
         );
     }
+}
+
+fn update_events<T>(mut uvm_events: UniqueViewMut<Events<T>>)
+where
+    T: Send + Sync + 'static,
+{
+    uvm_events.update();
 }
