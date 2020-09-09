@@ -76,6 +76,12 @@ impl AppBuilder {
     /// May panic if there are unmet unique dependencies or if there is an error adding workloads to shipyard.
     #[track_caller]
     pub fn finish(self) -> App {
+        self.finish_with_info().0
+    }
+
+    /// Finish [App] and report back each of the update stages with their [shipyard::info::WorkloadInfo].
+    #[track_caller]
+    pub fn finish_with_info(self) -> (App, Vec<(&'static str, info::WorkloadInfo)>) {
         let AppBuilder {
             world,
             stage_workloads,
@@ -137,19 +143,25 @@ impl AppBuilder {
             })
             .count();
 
-        let update_stages: Vec<&'static str> = stage_workloads
+        let (update_stages, stage_infos): (
+            Vec<&'static str>,
+            Vec<(&'static str, info::WorkloadInfo)>,
+        ) = stage_workloads
             .ordered
             .into_iter()
             .map(|(name, mut builder)| {
-                builder.add_to_world(&world).unwrap();
-                name
+                let info = builder.add_to_world_with_info(&world).unwrap();
+                (name, (name, info))
             })
-            .collect();
+            .unzip();
 
-        App {
-            world,
-            update_stages,
-        }
+        (
+            App {
+                world,
+                update_stages,
+            },
+            stage_infos,
+        )
     }
 
     fn empty() -> AppBuilder {
