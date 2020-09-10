@@ -1,5 +1,3 @@
-#![feature(trait_alias)]
-
 /// The names of the default App stages
 pub mod stage;
 
