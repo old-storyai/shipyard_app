@@ -1,39 +1,54 @@
 use super::*;
+use tracing::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MoveCmd {
     pub target: EntityId,
     pub place: MoveToPlace,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum MoveToPlace {
     Unlink,
-    Between(EntityId, EntityId),
+    After(EntityId),
     FirstChildOf(EntityId),
     LastChildOf(EntityId),
 }
 
+/// TODO: If there are more than one command, how are we re-indexing to heal the ParentIndex and SiblingIndex?
 pub fn tree_reordering(
-    (mut commands, mut vm_child_of, v_parent_index): (
+    (mut commands, mut vm_child_of, v_parent_index, v_sibling_index): (
         UniqueMoveCommands,
         ViewMut<ChildOf>,
         View<ParentIndex>,
+        View<SiblingIndex>,
     ),
 ) {
-    for cmd in commands.drain() {
+    let commands = commands.drain().collect::<Vec<_>>();
+    if commands.len() > 1 {
+        warn!(
+            ?commands,
+            "Multiple commands without reindexing, this may result in unexpected moves if the MoveCmds build on each other."
+        );
+    }
+
+    // NOTE: self after self? Creates a cycle? Do we need to check
+    for cmd in commands {
+        let span = info_span!("applying move command", ?cmd);
+        let _entered = span.enter();
         *(&mut vm_child_of).get(cmd.target).unwrap() = match cmd.place {
-            MoveToPlace::Between(a, b) => {
+            MoveToPlace::After(a) => {
                 // check that a & b are both of the same parent
                 let ChildOf(a_of, a_ord) = (&vm_child_of).get(a).unwrap();
-                let ChildOf(b_of, b_ord) = (&vm_child_of).get(b).unwrap();
 
-                if a_of != b_of {
-                    panic!("MoveToPlace::Between: failed to reorder between targets two elements of different parents target={:?}; {:?} vs {:?}", cmd.target, a_of, b_of);
-                }
+                let sibling = v_sibling_index.get(*a_of).expect("After command should point at indexed sibling. Perhaps a indexing step was missed.");
 
-                // set value to
-                ChildOf(*a_of, Ordered::between(&a_ord, &b_ord))
+                let new_ord = match sibling.next_sibling {
+                    Some((next_ord, _)) => Ordered::between(&a_ord, &next_ord),
+                    None => Ordered::after(&a_ord),
+                };
+
+                ChildOf(*a_of, new_ord)
             }
             MoveToPlace::FirstChildOf(parent) => v_parent_index
                 .get(parent)
