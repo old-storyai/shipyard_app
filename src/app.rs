@@ -6,7 +6,7 @@ use tracing::*;
 /// Containers of app logic and data
 pub struct App {
     pub world: World,
-    pub(crate) update_stages: Vec<&'static str>,
+    pub(crate) update_stage: &'static str,
     // pub(crate) startup_stages: Vec<&'static str>,
     // pub resources: Resources,
     // pub runner: Box<dyn Fn(App)>,
@@ -28,11 +28,7 @@ impl App {
     pub fn update(&self) {
         let span = trace_span!("update");
         let _span = span.enter();
-        for update_stage in self.update_stages.iter() {
-            let span = trace_span!("update", ?update_stage);
-            let _span = span.enter();
-            self.world.run_workload(update_stage);
-        }
+        self.world.run_workload(self.update_stage);
     }
 
     #[track_caller]

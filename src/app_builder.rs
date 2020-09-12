@@ -81,7 +81,7 @@ impl AppBuilder {
 
     /// Finish [App] and report back each of the update stages with their [shipyard::info::WorkloadInfo].
     #[track_caller]
-    pub fn finish_with_info(self) -> (App, Vec<(&'static str, info::WorkloadInfo)>) {
+    pub fn finish_with_info(self) -> (App, info::WorkloadInfo) {
         let AppBuilder {
             world,
             stage_workloads,
@@ -143,24 +143,27 @@ impl AppBuilder {
             })
             .count();
 
-        let (update_stages, stage_infos): (
-            Vec<&'static str>,
-            Vec<(&'static str, info::WorkloadInfo)>,
-        ) = stage_workloads
+        let update_stage = "update";
+        let update_info: info::WorkloadInfo = stage_workloads
             .ordered
             .into_iter()
-            .map(|(name, mut builder)| {
-                let info = builder.add_to_world_with_info(&world).unwrap();
-                (name, (name, info))
-            })
-            .unzip();
+            .map(|(_, wb)| wb)
+            .fold(
+                WorkloadBuilder::new(update_stage),
+                |mut acc: WorkloadBuilder, mut wb: WorkloadBuilder| {
+                    acc.append(&mut wb);
+                    acc
+                },
+            )
+            .add_to_world_with_info(&world)
+            .unwrap();
 
         (
             App {
                 world,
-                update_stages,
+                update_stage,
             },
-            stage_infos,
+            update_info,
         )
     }
 
