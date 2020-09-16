@@ -4,6 +4,7 @@ use crate::{app::App, plugin::Plugin, stage};
 use shipyard::*;
 use std::{
     any::{type_name, TypeId},
+    collections::hash_map::Entry,
     collections::HashMap,
 };
 use tracing::*;
@@ -40,20 +41,13 @@ impl AppBuilder {
         app_builder
     }
 
-    #[cfg(feature = "startup-stages")]
     fn add_default_stages(&mut self) -> &mut Self {
-        self.add_startup_stage(startup_stage::STARTUP)
-            .add_startup_stage(startup_stage::POST_STARTUP)
-            .add_stage(stage::FIRST)
-            .add_stage(stage::EVENT_UPDATE)
-            .add_stage(stage::PRE_UPDATE)
-            .add_stage(stage::UPDATE)
-            .add_stage(stage::POST_UPDATE)
-            .add_stage(stage::LAST)
-    }
+        #[cfg(feature = "startup-stages")]
+        {
+            self.add_startup_stage(startup_stage::STARTUP)
+                .add_startup_stage(startup_stage::POST_STARTUP);
+        }
 
-    #[cfg(not(feature = "startup-stages"))]
-    fn add_default_stages(&mut self) -> &mut Self {
         self.add_stage(stage::FIRST)
             .add_stage(stage::EVENT_UPDATE)
             .add_stage(stage::PRE_UPDATE)
@@ -98,10 +92,7 @@ impl AppBuilder {
         for (unique_type_id, provided_by) in track_uniques {
             let depended_on_by: Vec<(PluginId, &'static str)> = track_unique_dependencies
                 .remove(&unique_type_id)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(dependent_plugin_id, reason)| (dependent_plugin_id, reason))
-                .collect();
+                .unwrap_or_default();
 
             let unique_type_name = *track_type_names.get(&unique_type_id).unwrap();
             if provided_by.len() > 1 {
@@ -117,12 +108,8 @@ impl AppBuilder {
             .into_iter()
             .map(|(unique_type_id, dependents)| {
                 let unique_type_name = *track_type_names.get(&unique_type_id).unwrap();
-                // type name, reason pair
-                let depended_on_by: Vec<(PluginId, &'static str)> = dependents
-                    .into_iter()
-                    .map(|(dependent_plugin_id, reason)| (dependent_plugin_id, reason))
-                    .collect();
-                format!("- {} required by: {:?}", unique_type_name, depended_on_by)
+
+                format!("- {} required by: {:?}", unique_type_name, dependents)
             })
             .collect::<Vec<String>>();
 
@@ -134,14 +121,10 @@ impl AppBuilder {
             );
         }
 
-        startup_workloads
-            .ordered
-            .into_iter()
-            .map(|(name, mut builder)| {
-                builder.add_to_world(&world).unwrap();
-                world.run_workload(name);
-            })
-            .count();
+        for (name, mut builder) in startup_workloads.ordered {
+            builder.add_to_world(&world).unwrap();
+            world.run_workload(name);
+        }
 
         let update_stage = "update";
         let update_info: info::WorkloadInfo = stage_workloads
@@ -185,9 +168,10 @@ impl AppBuilder {
     /// Lookup the type id while simultaneously storing the type name to be referenced later
     fn tracked_type_id_of<T: 'static>(&mut self) -> TypeId {
         let type_id = TypeId::of::<T>();
-        if !self.track_type_names.contains_key(&type_id) {
-            self.track_type_names.insert(type_id, type_name::<T>());
-        }
+
+        self.track_type_names
+            .entry(type_id)
+            .or_insert_with(type_name::<T>);
 
         type_id
     }
@@ -195,22 +179,23 @@ impl AppBuilder {
     /// Update component `T`'s storage to be update_pack, and add [shipyard::sparse_set::SparseSet::clear_inserted_and_modified] at [stage::LAST].
     pub fn update_pack<T: 'static + Send + Sync>(&mut self, reason: &'static str) -> &mut Self {
         let type_id = self.tracked_type_id_of::<T>();
-        match self.track_update_packed.get_mut(&type_id) {
-            Some(ref mut list) => {
-                list.push((self.track_current_plugin.clone(), reason));
+
+        match self.track_update_packed.entry(type_id) {
+            Entry::Occupied(mut list) => {
                 // no need to pack again
-                self
+                list.get_mut()
+                    .push((self.track_current_plugin.clone(), reason));
             }
-            None => {
-                self.track_update_packed
-                    .insert(type_id, vec![(self.track_current_plugin.clone(), reason)]);
-                self.world
-                    .run(|mut vm_to_pack: ViewMut<T>| vm_to_pack.update_pack());
+            Entry::Vacant(list) => {
+                list.insert(vec![(self.track_current_plugin.clone(), reason)]);
+                self.world.borrow::<ViewMut<T>>().update_pack();
                 self.add_systems_to_stage(stage::LAST, |workload| {
                     workload.with_system(system!(reset_update_pack::<T>));
-                })
+                });
             }
         }
+
+        self
     }
 
     /// Add a unique component
