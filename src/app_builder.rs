@@ -192,7 +192,7 @@ impl AppBuilder {
         let type_id = TypeId::of::<T>();
         self.track_type_names
             .entry(type_id)
-            .or_insert(type_name::<T>());
+            .or_insert_with(type_name::<T>);
 
         type_id
     }
