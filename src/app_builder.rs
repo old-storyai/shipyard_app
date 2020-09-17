@@ -63,6 +63,12 @@ impl AppBuilder {
     }
 }
 
+impl Default for AppBuilder {
+    fn default() -> Self {
+        AppBuilder::new()
+    }
+}
+
 impl AppBuilder {
     /// The general approach to running a Shipyard App is to create a new shipyard [World],
     /// then pass that world into [App::build]. Then, after adding your plugins, you can call this [AppBuilder::finish] to get an [App].
@@ -137,11 +143,10 @@ impl AppBuilder {
         startup_workloads
             .ordered
             .into_iter()
-            .map(|(name, mut builder)| {
+            .for_each(|(name, mut builder)| {
                 builder.add_to_world(&world).unwrap();
                 world.run_workload(name);
-            })
-            .count();
+            });
 
         let update_stage = "update";
         let update_info: info::WorkloadInfo = stage_workloads
@@ -185,9 +190,9 @@ impl AppBuilder {
     /// Lookup the type id while simultaneously storing the type name to be referenced later
     fn tracked_type_id_of<T: 'static>(&mut self) -> TypeId {
         let type_id = TypeId::of::<T>();
-        if !self.track_type_names.contains_key(&type_id) {
-            self.track_type_names.insert(type_id, type_name::<T>());
-        }
+        self.track_type_names
+            .entry(type_id)
+            .or_insert(type_name::<T>());
 
         type_id
     }
