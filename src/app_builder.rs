@@ -367,7 +367,10 @@ impl AppBuilder {
     // }
 
     #[cfg(feature = "startup-stages")]
-    pub fn add_startup_systems(&mut self, workload_builder: impl WorkloadApplyFn) -> &mut Self {
+    pub fn add_startup_systems<F>(&mut self, workload_builder: F) -> &mut Self
+    where
+        F: FnOnce(&mut WorkloadBuilder),
+    {
         self.add_startup_systems_to_stage(startup_stage::STARTUP, workload_builder)
     }
 
