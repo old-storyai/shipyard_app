@@ -35,7 +35,6 @@ impl Workloads {
                 if name == stage_name {
                     if let Some(apply_fn_first_time) = apply_fn_opt.take() {
                         apply_fn_first_time(&mut workload_builder);
-                        return (name, workload_builder);
                     }
                 }
 

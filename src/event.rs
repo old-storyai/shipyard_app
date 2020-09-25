@@ -248,7 +248,7 @@ impl<T: Send + Sync + 'static> Events<T> {
 
     pub fn extend<I>(&mut self, events: I)
     where
-        I: Iterator<Item = T>,
+        I: IntoIterator<Item = T>,
     {
         for event in events {
             self.send(event);
