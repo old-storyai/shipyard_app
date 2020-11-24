@@ -242,23 +242,6 @@ mod tests {
     }
 
     #[test]
-    // TODO: Complete this test
-    fn update_entity_as_child_of_self() {
-        let world = setup_world_with_index_system();
-        world.run(
-            |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                let a = entities.add_entity((), ());
-                entities.add_component(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)), a);
-
-                return a;
-            },
-        );
-
-        // Run the indexing workload
-        world.run_default();
-    }
-
-    #[test]
     fn delete_only_child() {
         let world = setup_world_with_index_system();
         // Add a parent and child entity
