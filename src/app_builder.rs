@@ -15,8 +15,8 @@ use plugin_id::PluginId;
 use workloads::Workloads;
 
 /// Configure [App]s using the builder pattern
-pub struct AppBuilder {
-    pub world: World,
+pub struct AppBuilder<'a> {
+    pub app: &'a App,
     stage_workloads: Workloads,
     startup_workloads: Workloads,
     /// track the plugins previously added to enable checking that plugin peer dependencies are satisified
@@ -34,9 +34,9 @@ pub struct AppBuilder {
     track_update_packed: HashMap<TypeId, Vec<(PluginId, &'static str)>>,
 }
 
-impl AppBuilder {
-    pub fn new() -> AppBuilder {
-        let mut app_builder = AppBuilder::empty();
+impl<'a> AppBuilder<'a> {
+    pub fn new<'b>(app: &'b App) -> AppBuilder<'b> {
+        let mut app_builder = AppBuilder::empty(app);
         app_builder.add_default_stages();
         app_builder
     }
@@ -57,13 +57,16 @@ impl AppBuilder {
     }
 }
 
-impl Default for AppBuilder {
-    fn default() -> Self {
-        AppBuilder::new()
+pub struct AppWorkload(std::borrow::Cow<'static, str>);
+
+impl AppWorkload {
+    #[track_caller]
+    pub fn run(&self, app: &App) {
+        app.world.run_workload(&self.0);
     }
 }
 
-impl AppBuilder {
+impl<'a> AppBuilder<'a> {
     /// The general approach to running a Shipyard App is to create a new shipyard [World],
     /// then pass that world into [App::build]. Then, after adding your plugins, you can call this [AppBuilder::finish] to get an [App].
     ///
@@ -75,15 +78,23 @@ impl AppBuilder {
     /// # Panics
     /// May panic if there are unmet unique dependencies or if there is an error adding workloads to shipyard.
     #[track_caller]
-    pub fn finish(self) -> App {
+    pub fn finish(self) -> AppWorkload {
         self.finish_with_info().0
     }
 
     /// Finish [App] and report back each of the update stages with their [shipyard::info::WorkloadInfo].
     #[track_caller]
-    pub fn finish_with_info(self) -> (App, info::WorkloadInfo) {
+    pub fn finish_with_info(self) -> (AppWorkload, info::WorkloadInfo) {
+        self.finish_with_info_named("update".into())
+    }
+    /// Finish [App] and report back each of the update stages with their [shipyard::info::WorkloadInfo].
+    #[track_caller]
+    pub(crate) fn finish_with_info_named(
+        self,
+        update_stage: std::borrow::Cow<'static, str>,
+    ) -> (AppWorkload, info::WorkloadInfo) {
         let AppBuilder {
-            world,
+            app,
             stage_workloads,
             startup_workloads,
             track_added_plugins: _,
@@ -128,37 +139,30 @@ impl AppBuilder {
         }
 
         for (name, mut builder) in startup_workloads.ordered {
-            builder.add_to_world(&world).unwrap();
-            world.run_workload(name);
+            builder.add_to_world(&app.world).unwrap();
+            self.app.world.run_workload(name);
         }
 
-        let update_stage = "update";
         let update_info: info::WorkloadInfo = stage_workloads
             .ordered
             .into_iter()
             .map(|(_, wb)| wb)
             .fold(
-                WorkloadBuilder::new(update_stage),
+                WorkloadBuilder::new(update_stage.clone()),
                 |mut acc: WorkloadBuilder, mut wb: WorkloadBuilder| {
                     acc.append(&mut wb);
                     acc
                 },
             )
-            .add_to_world_with_info(&world)
+            .add_to_world_with_info(&app.world)
             .unwrap();
 
-        (
-            App {
-                world,
-                update_stage,
-            },
-            update_info,
-        )
+        (AppWorkload(update_stage.into()), update_info)
     }
 
-    fn empty() -> AppBuilder {
-        let world = shipyard::World::new();
+    fn empty<'b>(app: &'b App) -> AppBuilder<'b> {
         AppBuilder {
+            app,
             stage_workloads: Workloads::new(),
             startup_workloads: Workloads::new(),
             track_added_plugins: Default::default(),
@@ -167,7 +171,6 @@ impl AppBuilder {
             track_uniques: Default::default(),
             track_unique_dependencies: Default::default(),
             track_update_packed: Default::default(),
-            world,
         }
     }
 
@@ -193,7 +196,7 @@ impl AppBuilder {
             }
             Entry::Vacant(list) => {
                 list.insert(vec![(self.track_current_plugin.clone(), reason)]);
-                self.world.borrow::<ViewMut<T>>().update_pack();
+                self.app.world.borrow::<ViewMut<T>>().update_pack();
                 self.add_systems_to_stage(stage::LAST, |workload| {
                     workload.with_system(system!(reset_update_pack::<T>));
                 });
@@ -208,7 +211,7 @@ impl AppBuilder {
     where
         T: Send + Sync + 'static,
     {
-        self.world.add_unique(component);
+        self.app.world.add_unique(component);
         let unique_type_id = self.tracked_type_id_of::<T>();
         self.track_uniques
             .entry(unique_type_id)
@@ -220,6 +223,7 @@ impl AppBuilder {
     /// Declare that this builder has a dependency on the following unique.
     ///
     /// If the unique dependency is not satisfied by the time [AppBuilder::finish] is called, then the finish call will panic.
+    #[track_caller]
     pub fn depends_on_unique<T>(&mut self, dependency_reason: &'static str) -> &mut Self
     where
         T: Send + Sync + 'static,
@@ -233,6 +237,7 @@ impl AppBuilder {
     }
 
     /// Declare that this builder has a dependency on the following plugin.
+    #[track_caller]
     pub fn depends_on_plugin<T>(&mut self, dependency_reason: &'static str) -> &mut Self
     where
         T: Plugin,

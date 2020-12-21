@@ -60,7 +60,7 @@ mod tests {
         });
 
         // Add the indexing workload
-        let mut indexing = WorkloadBuilder::new("indexing");
+        let mut indexing = AppBuilder::new("indexing");
 
         indexing
             .with_system(system!(indexing::tree_indexing))
@@ -455,8 +455,8 @@ mod tests {
     fn test_indexing() {
         let mut builder = App::build();
 
-        builder.world.add_unique(Events::<MoveCmd>::default());
-        builder.world.run(|mut vm_child_of: ViewMut<ChildOf>| {
+        builder.app.add_unique(Events::<MoveCmd>::default());
+        builder.app.run(|mut vm_child_of: ViewMut<ChildOf>| {
             vm_child_of.update_pack();
         });
 
