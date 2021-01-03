@@ -15,7 +15,6 @@
 //!  - Less blocking systems (if something only cares that the ChildOf / Ordering has changed and the system does not
 //!    look at the indexed outputs, then it can run concurrently with the tree_indexing system)
 use crate::*;
-use shipyard::*;
 
 mod indexing;
 mod node;
@@ -23,12 +22,9 @@ mod reordering;
 
 pub use indexing::{ParentIndex, SiblingIndex};
 pub use node::*;
-pub use reordering::{
-    MoveCmd,
-    MoveToPlace, // TODO: use shipyard_app Events
-};
+pub use reordering::{MoveCmd, MoveToPlace};
 
-pub type UniqueMoveCommands<'a> = UniqueViewMut<'a, Events<MoveCmd>>;
+pub type UniqueMoveCommands<'a> = UniqueViewMut<'a, Vec<MoveCmd>>;
 
 /// Registers
 #[derive(Default)]
@@ -36,13 +32,10 @@ pub struct TreePlugin;
 
 impl Plugin for TreePlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_plugin(EventPlugin::<MoveCmd>::default())
-            .update_pack::<ChildOf>("to fix ParentIndex & SiblingIndex components on changes")
-            .add_systems_to_stage(stage::POST_UPDATE, |workload| {
-                workload
-                    .with_system(system!(reordering::tree_reordering))
-                    .with_system(system!(indexing::tree_indexing));
-            });
+        // needs direct update pack since TreePlugin clears updates on its own.
+        app.update_pack::<ChildOf>("update in response to ChildOf changes");
+
+        app.add_system(system!(indexing::tree_indexing));
     }
 }
 
@@ -60,7 +53,7 @@ mod tests {
         });
 
         // Add the indexing workload
-        let mut indexing = AppBuilder::new("indexing");
+        let mut indexing = WorkloadBuilder::new("indexing");
 
         indexing
             .with_system(system!(indexing::tree_indexing))
@@ -248,8 +241,7 @@ mod tests {
         world.run(
             |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
                 let a = entities.add_entity((), ());
-                entities.add_component(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)), a);
-
+                entities.add_component(a, &mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
                 return a;
             },
         );
@@ -453,31 +445,31 @@ mod tests {
 
     #[test]
     fn test_indexing() {
-        let mut builder = App::build();
+        let mut app = App::new();
 
-        builder.app.add_unique(Events::<MoveCmd>::default());
-        builder.app.run(|mut vm_child_of: ViewMut<ChildOf>| {
+        app.world.add_unique::<Vec<MoveCmd>>(Vec::new());
+
+        app.world.run(|mut vm_child_of: ViewMut<ChildOf>| {
             vm_child_of.update_pack();
         });
 
-        builder.add_systems(|workload| {
-            workload
-                .with_system(system!(|mut events: UniqueMoveCommands| events.update()))
-                .with_system(system!(reordering::tree_reordering))
-                .with_system(system!(indexing::tree_indexing))
-                .with_system(system!(|mut vm_child_of: ViewMut<ChildOf>| {
-                    vm_child_of.clear_inserted_and_modified();
-                }));
-        });
+        WorkloadBuilder::new("default")
+            .with_system(system!(reordering::tree_reordering))
+            .with_system(system!(indexing::tree_indexing))
+            .with_system(system!(|mut vm_child_of: ViewMut<ChildOf>| {
+                vm_child_of.clear_inserted_and_modified();
+            }))
+            .add_to_world(&mut app.world)
+            .unwrap();
 
-        test_with_indexing_with_world(builder.finish());
+        test_with_indexing_with_world(app);
     }
 
     #[test]
     fn test_indexing_with_plugin() {
-        let mut builder = App::build();
-        builder.add_plugin(TreePlugin);
-        test_with_indexing_with_world(builder.finish());
+        let app = App::new();
+        app.add_plugin_workload(TreePlugin);
+        test_with_indexing_with_world(app);
     }
 
     fn test_with_indexing_with_world(app: App) {

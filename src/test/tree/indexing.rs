@@ -37,12 +37,8 @@ pub fn tree_indexing(
         });
 
     // iff ChildOf is completely new component
-    vm_child_of
-        .inserted()
-        .iter()
-        .with_id()
-        .into_iter()
-        .for_each(|(inserted_id, ChildOf(parent_id, child_order))| {
+    vm_child_of.inserted().iter().with_id().for_each(
+        |(inserted_id, ChildOf(parent_id, child_order))| {
             insert_child_of(
                 &v_entities,
                 &vm_child_of,
@@ -52,15 +48,12 @@ pub fn tree_indexing(
                 &child_order,
                 *parent_id,
             );
-        });
+        },
+    );
 
     // iff ChildOf was modified
-    vm_child_of
-        .modified()
-        .iter()
-        .with_id()
-        .into_iter()
-        .for_each(|(modified_id, ChildOf(parent_id, child_order))| {
+    vm_child_of.modified().iter().with_id().for_each(
+        |(modified_id, ChildOf(parent_id, child_order))| {
             // remove from parent
             unlink_child(&mut vm_sibling_index, &mut vm_parent_index, modified_id);
 
@@ -74,32 +67,31 @@ pub fn tree_indexing(
                 &child_order,
                 *parent_id,
             );
-        });
+        },
+    );
+
+    vm_child_of.clear_inserted_and_modified();
 }
 
-fn insert_child_of<'a, AllChildOf: shipyard::IntoIter>(
+fn insert_child_of(
     v_entities: &EntitiesView,
-    all_child_of_iter: AllChildOf, // needed for creating parent node indexes, since parents do not need a ChildOf component
+    all_child_of_iter: &ViewMut<ChildOf>, // needed for creating parent node indexes, since parents do not need a ChildOf component
     vm_sibling_index: &mut ViewMut<SiblingIndex>,
     vm_parent_index: &mut ViewMut<ParentIndex>,
     child_id: EntityId,
     child_order: &Ordered, // used to position between siblings
     parent_id: EntityId,   // insert to this parent
-) where
-    <AllChildOf as shipyard::IntoIter>::IntoIter:
-        Shiperator<Item = &'a ChildOf> + CurrentId<Id = EntityId>,
-{
+) {
     // parent: insert into list at correct location,
     // find next index and previous index and update their sibling references respectively
-    let parent_index: &mut ParentIndex = {
+    let mut parent_index = {
         if let Ok(parent_index) = vm_parent_index.get(parent_id) {
             parent_index
         } else {
             let mut children = all_child_of_iter
                 .iter()
-                .filter(|ChildOf(ref child_parent_id, _)| child_parent_id == &parent_id)
                 .with_id()
-                .into_iter()
+                .filter(|(_, ChildOf(ref child_parent_id, _))| child_parent_id == &parent_id)
                 .map(|(id, ChildOf(_, ref ordered))| -> SiblingID { (*ordered, id) })
                 .collect::<Vec<SiblingID>>();
 
@@ -109,6 +101,7 @@ fn insert_child_of<'a, AllChildOf: shipyard::IntoIter>(
             for (idx, child) in children.iter().enumerate() {
                 // dbg!(child);
                 v_entities.add_component(
+                    child.1,
                     &mut *vm_sibling_index,
                     SiblingIndex {
                         next_sibling: if idx < children.len() - 1 {
@@ -124,7 +117,6 @@ fn insert_child_of<'a, AllChildOf: shipyard::IntoIter>(
                         ordered_node: *child,
                         parent_node: parent_id,
                     },
-                    child.1,
                 );
             }
 
@@ -134,7 +126,7 @@ fn insert_child_of<'a, AllChildOf: shipyard::IntoIter>(
             // }
 
             // parent has no parent or siblings
-            v_entities.add_component(&mut *vm_parent_index, ParentIndex { children }, parent_id);
+            v_entities.add_component(parent_id, &mut *vm_parent_index, ParentIndex { children });
 
             vm_parent_index
                 .get(parent_id)
@@ -194,6 +186,7 @@ fn insert_child_of<'a, AllChildOf: shipyard::IntoIter>(
         }
 
         v_entities.add_component(
+            child_id,
             vm_sibling_index,
             SiblingIndex {
                 ordered_node: to_insert,
@@ -201,7 +194,6 @@ fn insert_child_of<'a, AllChildOf: shipyard::IntoIter>(
                 prev_sibling: prev_node_opt,
                 parent_node: parent_id,
             },
-            child_id,
         );
     }
 }
@@ -221,20 +213,18 @@ fn unlink_child(
     };
 
     // parent: remove T from children
-    let parent_index = vm_parent_index.get(parent_id).unwrap();
+    let mut parent_index = vm_parent_index.get(parent_id).unwrap();
     parent_index.children.retain(|(_, id)| id != &child);
 
     if let Some(prev_sibling_id) = t_prev_sibling {
         // prevsibling: set nextsibling to T's nextsibling
-        let mut prev_sibling_index: &mut SiblingIndex =
-            vm_sibling_index.get(prev_sibling_id.1).unwrap();
+        let mut prev_sibling_index = vm_sibling_index.get(prev_sibling_id.1).unwrap();
         prev_sibling_index.next_sibling = t_next_sibling;
     }
 
     if let Some(next_sibling_id) = t_next_sibling {
         // nextsibling: set prevsibling to T's prevsibling
-        let mut next_sibling_index: &mut SiblingIndex =
-            vm_sibling_index.get(next_sibling_id.1).unwrap();
+        let mut next_sibling_index = vm_sibling_index.get(next_sibling_id.1).unwrap();
         next_sibling_index.prev_sibling = t_prev_sibling;
     }
 

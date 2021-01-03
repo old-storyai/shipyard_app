@@ -24,7 +24,7 @@ pub fn tree_reordering(
         View<SiblingIndex>,
     ),
 ) {
-    let commands = commands.drain().collect::<Vec<_>>();
+    let commands = commands.drain(..).collect::<Vec<_>>();
     if commands.len() > 1 {
         warn!(
             ?commands,

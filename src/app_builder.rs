@@ -1,6 +1,5 @@
-#[cfg(feature = "startup-stages")]
-use crate::startup_stage;
-use crate::{app::App, plugin::Plugin, stage};
+use crate::{app::App, plugin::Plugin};
+use shipyard;
 use shipyard::*;
 use std::{
     any::{type_name, TypeId},
@@ -14,11 +13,14 @@ mod workloads;
 use plugin_id::PluginId;
 use workloads::Workloads;
 
+/// Name of app stage responsible for doing most app logic. Systems should be registered here by default.
+pub const DEFAULT_STAGE: &str = "default";
+
 /// Configure [App]s using the builder pattern
 pub struct AppBuilder<'a> {
     pub app: &'a App,
     stage_workloads: Workloads,
-    startup_workloads: Workloads,
+    resets: Vec<WorkloadSystem>,
     /// track the plugins previously added to enable checking that plugin peer dependencies are satisified
     track_added_plugins: HashMap<TypeId, PluginId>,
     /// track the currently being used plugin ([PluginId] is a stack since some plugins add other plugins creating a nest)
@@ -42,18 +44,7 @@ impl<'a> AppBuilder<'a> {
     }
 
     fn add_default_stages(&mut self) -> &mut Self {
-        #[cfg(feature = "startup-stages")]
-        {
-            self.add_startup_stage(startup_stage::STARTUP)
-                .add_startup_stage(startup_stage::POST_STARTUP);
-        }
-
-        self.add_stage(stage::FIRST)
-            .add_stage(stage::EVENT_UPDATE)
-            .add_stage(stage::PRE_UPDATE)
-            .add_stage(stage::UPDATE)
-            .add_stage(stage::POST_UPDATE)
-            .add_stage(stage::LAST)
+        self.add_stage(DEFAULT_STAGE)
     }
 }
 
@@ -95,8 +86,8 @@ impl<'a> AppBuilder<'a> {
     ) -> (AppWorkload, info::WorkloadInfo) {
         let AppBuilder {
             app,
+            resets,
             stage_workloads,
-            startup_workloads,
             track_added_plugins: _,
             track_current_plugin: _,
             track_type_names,
@@ -138,15 +129,16 @@ impl<'a> AppBuilder<'a> {
             );
         }
 
-        for (name, mut builder) in startup_workloads.ordered {
-            builder.add_to_world(&app.world).unwrap();
-            self.app.world.run_workload(name);
+        let mut resets_workload = WorkloadBuilder::default();
+        for reset_system in resets {
+            resets_workload.with_system(Ok(reset_system));
         }
 
         let update_info: info::WorkloadInfo = stage_workloads
             .ordered
             .into_iter()
             .map(|(_, wb)| wb)
+            .chain(std::iter::once(resets_workload))
             .fold(
                 WorkloadBuilder::new(update_stage.clone()),
                 |mut acc: WorkloadBuilder, mut wb: WorkloadBuilder| {
@@ -163,8 +155,8 @@ impl<'a> AppBuilder<'a> {
     fn empty<'b>(app: &'b App) -> AppBuilder<'b> {
         AppBuilder {
             app,
+            resets: Vec::new(),
             stage_workloads: Workloads::new(),
-            startup_workloads: Workloads::new(),
             track_added_plugins: Default::default(),
             track_current_plugin: Default::default(),
             track_type_names: Default::default(),
@@ -184,7 +176,8 @@ impl<'a> AppBuilder<'a> {
         type_id
     }
 
-    /// Update component `T`'s storage to be update_pack, and add [shipyard::sparse_set::SparseSet::clear_inserted_and_modified] at [stage::LAST].
+    /// Update component `T`'s storage to be update_pack, and add [shipyard::sparse_set::SparseSet::clear_inserted_and_modified] as the last system.
+    #[track_caller]
     pub fn update_pack<T: 'static + Send + Sync>(&mut self, reason: &'static str) -> &mut Self {
         let type_id = self.tracked_type_id_of::<T>();
 
@@ -197,9 +190,7 @@ impl<'a> AppBuilder<'a> {
             Entry::Vacant(list) => {
                 list.insert(vec![(self.track_current_plugin.clone(), reason)]);
                 self.app.world.borrow::<ViewMut<T>>().update_pack();
-                self.add_systems_to_stage(stage::LAST, |workload| {
-                    workload.with_system(system!(reset_update_pack::<T>));
-                });
+                self.resets.push(system!(reset_update_pack::<T>).unwrap());
             }
         }
 
@@ -254,24 +245,6 @@ impl<'a> AppBuilder<'a> {
         self
     }
 
-    // pub fn resources(&self) -> &Resources {
-    //     &self.app.resources
-    // }
-
-    // pub fn resources_mut(&mut self) -> &mut Resources {
-    //     &mut self.app.resources
-    // }
-
-    // pub fn run(&mut self) {
-    //     let app = std::mem::take(&mut self.world);
-    //     app.run();
-    // }
-
-    // pub fn set_world(&mut self, world: World) -> &mut Self {
-    //     self.world.world = world;
-    //     self
-    // }
-
     fn add_stage(&mut self, stage_name: &'static str) -> &mut Self {
         self.stage_workloads.add_stage(stage_name);
         self
@@ -291,165 +264,21 @@ impl<'a> AppBuilder<'a> {
     //     self
     // }
 
-    #[cfg(feature = "startup-stages")]
-    fn add_startup_stage(&mut self, stage_name: &'static str) -> &mut Self {
-        self.startup_workloads.add_stage(stage_name);
-        self
-    }
-
-    // pub fn add_system(&mut self, system: WorkloadApplyFn) -> &mut Self {
-    //     self.add_system_to_stage(stage::UPDATE, system)
-    // }
-
-    pub fn add_systems<F>(&mut self, workload_builder: F) -> &mut Self
-    where
-        F: FnOnce(&mut WorkloadBuilder),
-    {
-        self.add_systems_to_stage(stage::UPDATE, workload_builder)
-    }
-
-    // pub fn init_system(
-    //     &mut self,
-    //     build: impl FnMut(&mut Resources) -> Box<dyn System>,
-    // ) -> &mut Self {
-    //     self.init_system_to_stage(stage::UPDATE, build)
-    // }
-
-    // pub fn init_system_to_stage(
-    //     &mut self,
-    //     stage: &'static str,
-    //     mut build: impl FnMut(&mut Resources) -> Box<dyn System>,
-    // ) -> &mut Self {
-    //     let system = build(&mut self.world.resources);
-    //     self.add_system_to_stage(stage, system)
-    // }
-
-    // pub fn add_startup_system_to_stage(
-    //     &mut self,
-    //     stage_name: &'static str,
-    //     system: Box<dyn System>,
-    // ) -> &mut Self {
-    //     self.world
-    //         .startup_schedule
-    //         .add_system_to_stage(stage_name, system);
-    //     self
-    // }
-
-    #[cfg(feature = "startup-stages")]
-    pub fn add_startup_systems_to_stage<F>(
-        &mut self,
-        stage_name: &'static str,
-        workload_builder: F,
-    ) -> &mut Self
-    where
-        F: FnOnce(&mut WorkloadBuilder),
-    {
-        self.startup_workloads
-            .add_systems_to_stage(stage_name, workload_builder);
-        self
-    }
-
-    // pub fn add_startup_system(&mut self, system: Box<dyn System>) -> &mut Self {
-    //     self.world
-    //         .startup_schedule
-    //         .add_system_to_stage(startup_stage::STARTUP, system);
-    //     self
-    // }
-
-    #[cfg(feature = "startup-stages")]
-    pub fn add_startup_systems<F>(&mut self, workload_builder: F) -> &mut Self
-    where
-        F: FnOnce(&mut WorkloadBuilder),
-    {
-        self.add_startup_systems_to_stage(startup_stage::STARTUP, workload_builder)
-    }
-
-    // #[cfg(feature = "startup-stages")]
-    // pub fn init_startup_system(
-    //     &mut self,
-    //     build: impl FnMut(&mut Uniques) -> dyn WorkloadApplyFn,
-    // ) -> &mut Self {
-    //     self.init_startup_systems_to_stage(startup_stage::STARTUP, build)
-    // }
-
-    // #[cfg(feature = "startup-stages")]
-    // pub fn init_startup_systems_to_stage(
-    //     &mut self,
-    //     stage: &'static str,
-    //     mut build: impl FnMut(&mut Uniques) -> dyn WorkloadApplyFn,
-    // ) -> &mut Self {
-    //     self.add_startup_systems_to_stage(
-    //         stage,
-    //         build(&mut Uniques {
-    //             world: self.world.clone(),
-    //         }),
-    //     )
-    // }
-
-    pub fn add_systems_to_stage<F>(
-        &mut self,
-        stage_name: &'static str,
-        workload_builder: F,
-    ) -> &mut Self
-    where
-        F: FnOnce(&mut WorkloadBuilder),
-    {
+    #[track_caller]
+    pub fn add_system(&mut self, system: SystemResult) -> &mut Self {
         self.stage_workloads
-            .add_systems_to_stage(stage_name, workload_builder);
+            .add_system_to_stage(DEFAULT_STAGE, system.unwrap());
 
         self
     }
 
-    // pub fn add_system_to_stage_front(
-    //     &mut self,
-    //     stage_name: &'static str,
-    //     system: Box<dyn System>,
-    // ) -> &mut Self {
-    //     self.world
-    //         .schedule
-    //         .add_system_to_stage_front(stage_name, system);
-    //     self
-    // }
+    /// Ensure that this system is among the absolute last systems
+    #[track_caller]
+    pub fn add_reset_system(&mut self, system: SystemResult) -> &mut Self {
+        self.resets.push(system.unwrap());
 
-    // pub fn add_systems_to_stage(
-    //     &mut self,
-    //     stage_name: &'static str,
-    //     systems: Vec<Box<dyn System>>,
-    // ) -> &mut Self {
-    //     for system in systems {
-    //         self.stage_workloads.add_system_to_stage(stage_name, system);
-    //     }
-    //     self
-    // }
-
-    pub fn add_event<T>(&mut self) -> &mut Self
-    where
-        T: Send + Sync + 'static,
-    {
-        self.add_plugin(crate::EventPlugin::<T>::default())
+        self
     }
-
-    // pub fn init_resource<R>(&mut self) -> &mut Self
-    // where
-    //     R: FromResources + Send + Sync + 'static,
-    // {
-    //     let resource = R::from_resources(&self.world.resources);
-    //     self.world.resources.insert(resource);
-
-    //     self
-    // }
-
-    // pub fn set_runner(&mut self, run_fn: impl Fn(App) + 'static) -> &mut Self {
-    //     self.world.runner = Box::new(run_fn);
-    //     self
-    // }
-
-    // pub fn load_plugin(&mut self, path: &str) -> &mut Self {
-    //     let (_lib, plugin) = dynamically_load_plugin(path);
-    //     debug!("loaded plugin: {}", plugin.name());
-    //     plugin.build(self);
-    //     self
-    // }
 
     pub fn add_plugin<T>(&mut self, plugin: T) -> &mut Self
     where
@@ -483,5 +312,5 @@ impl<'a> AppBuilder<'a> {
 
 fn reset_update_pack<T>(mut vm_to_clear: ViewMut<T>) {
     vm_to_clear.clear_inserted_and_modified();
-    vm_to_clear.take_deleted();
+    vm_to_clear.take_removed_and_deleted();
 }

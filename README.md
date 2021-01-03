@@ -7,7 +7,7 @@ This allows for codebases to more easily divide up many systems and workloads wi
 Example [from test/tree.rs](https://github.com/storyscript/shipyard_app/blob/master/src/test/tree.rs)
 
 ```rust
-use shipyard_app::{AppBuilder, EventPlugin, Plugin, stage};
+use shipyard_app::{AppBuilder, Plugin};
 use shipyard::{system, WorkloadBuilder};
 ...
 
@@ -16,14 +16,11 @@ use shipyard::{system, WorkloadBuilder};
 pub struct TreePlugin;
 
 impl Plugin for TreePlugin {
-    fn build<'a>(&self, app: &mut AppBuilder) {
-        app.add_event::<reordering::MoveCmd>()
-            .update_pack::<ChildOf>("to fix ParentIndex & SiblingIndex components on changes") // enable change tracking in shipyard for the ChildOf component
-            .add_systems_to_stage(stage::POST_UPDATE, |workload| {
-                workload
-                    .with_system(system!(reordering::tree_reordering))
-                    .with_system(system!(indexing::tree_indexing));
-            });
+    fn build(&self, app: &mut AppBuilder) {
+        app.update_pack::<ChildOf>("update in response to ChildOf changes");
+
+        app.add_system(system!(indexing::tree_indexing))
+            .add_system(system!(indexing::tree_indexing));
     }
 }
 ```
