@@ -1,5 +1,4 @@
 use crate::{app::App, plugin::Plugin};
-use shipyard;
 use shipyard::*;
 use std::{
     any::{type_name, TypeId},
@@ -37,7 +36,7 @@ pub struct AppBuilder<'a> {
 }
 
 impl<'a> AppBuilder<'a> {
-    pub fn new<'b>(app: &'b App) -> AppBuilder<'b> {
+    pub fn new(app: &App) -> AppBuilder<'_> {
         let mut app_builder = AppBuilder::empty(app);
         app_builder.add_default_stages();
         app_builder
@@ -149,10 +148,10 @@ impl<'a> AppBuilder<'a> {
             .add_to_world_with_info(&app.world)
             .unwrap();
 
-        (AppWorkload(update_stage.into()), update_info)
+        (AppWorkload(update_stage), update_info)
     }
 
-    fn empty<'b>(app: &'b App) -> AppBuilder<'b> {
+    fn empty(app: &App) -> AppBuilder<'_> {
         AppBuilder {
             app,
             resets: Vec::new(),
