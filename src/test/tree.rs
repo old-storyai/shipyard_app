@@ -500,7 +500,7 @@ mod tests {
             .with_system(system!(|mut vm_child_of: ViewMut<ChildOf>| {
                 vm_child_of.clear_all_inserted_and_modified();
             }))
-            .add_to_world(&mut app.world)
+            .add_to_world(&app.world)
             .unwrap();
 
         test_with_indexing_with_world(app);
