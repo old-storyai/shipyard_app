@@ -46,11 +46,13 @@ mod tests {
 
     fn setup_world_with_index_system() -> World {
         // Create a new world
-        let mut world = World::new();
+        let world = World::new();
         // Track modifications to the child_of components
-        world.run(|mut vm_child_of: ViewMut<ChildOf>| {
-            vm_child_of.update_pack();
-        });
+        world
+            .run(|mut vm_child_of: ViewMut<ChildOf>| {
+                vm_child_of.update_pack();
+            })
+            .unwrap();
 
         // Add the indexing workload
         let mut indexing = WorkloadBuilder::new("indexing");
@@ -58,390 +60,445 @@ mod tests {
         indexing
             .with_system(system!(indexing::tree_indexing))
             .with_system(system!(|mut vm_child_of: ViewMut<ChildOf>| {
-                vm_child_of.clear_inserted_and_modified();
+                vm_child_of.clear_all_inserted_and_modified();
+                vm_child_of.take_deleted();
             }))
-            .add_to_world(&mut world)
+            .add_to_world(&world)
             .unwrap();
 
-        return world;
+        world
     }
 
     #[test]
     fn insert_single_entity_with_no_children() {
         let world = setup_world_with_index_system();
         // Add a parent and child entity
-        let a = world.run(|mut entities: EntitiesViewMut| entities.add_entity((), ()));
+        let a = world
+            .run(|mut entities: EntitiesViewMut| entities.add_entity((), ()))
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
         // There should be no indexes at all
-        world.run(
-            |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
-                assert_eq!(v_parent_index.contains(a), false);
-                assert_eq!(v_sibling_index.contains(a), false);
-            },
-        )
+        world
+            .run(
+                |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
+                    assert_eq!(v_parent_index.contains(a), false);
+                    assert_eq!(v_sibling_index.contains(a), false);
+                },
+            )
+            .unwrap();
     }
 
     #[test]
     fn insert_single_child() {
         let world = setup_world_with_index_system();
         // Add a parent and child entity
-        let (a, a1) = world.run(
-            |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                let a = entities.add_entity((), ());
-                let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                (a, a1)
-            },
-        );
+        let (a, a1) = world
+            .run(
+                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
+                    let a = entities.add_entity((), ());
+                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
+                    (a, a1)
+                },
+            )
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
         // Run an anonymous system to verify the state of the indexes
-        world.run(
-            |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
-                // The root node should not have a sibling index
-                v_sibling_index
-                    .get(a)
-                    .expect_err("should not have sibling data");
+        world
+            .run(
+                |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
+                    // The root node should not have a sibling index
+                    v_sibling_index
+                        .get(a)
+                        .expect_err("should not have sibling data");
 
-                // The root node should have a parent index
-                let c: &ParentIndex = v_parent_index.get(a).expect("has children");
+                    // The root node should have a parent index
+                    let c: &ParentIndex = v_parent_index.get(a).expect("has children");
 
-                // The root node should have exactly one child
-                assert_eq!(parent_children_ids(c), vec![a1], "should be in order");
+                    // The root node should have exactly one child
+                    assert_eq!(parent_children_ids(c), vec![a1], "should be in order");
 
-                // The child should not have a parent index
-                assert_eq!(v_parent_index.contains(a1), false);
+                    // The child should not have a parent index
+                    assert_eq!(v_parent_index.contains(a1), false);
 
-                // The child should have a sibling index, with no siblings and the parent being the root node
-                let a1_sib: &SiblingIndex =
-                    v_sibling_index.get(a1).expect("should have sibling data");
-                assert_eq!(a1_sib.prev_sibling, None, "only child");
-                assert_eq!(a1_sib.next_sibling, None, "only child");
-                assert_eq!(a1_sib.parent_node, a)
-            },
-        );
+                    // The child should have a sibling index, with no siblings and the parent being the root node
+                    let a1_sib: &SiblingIndex =
+                        v_sibling_index.get(a1).expect("should have sibling data");
+                    assert_eq!(a1_sib.prev_sibling, None, "only child");
+                    assert_eq!(a1_sib.next_sibling, None, "only child");
+                    assert_eq!(a1_sib.parent_node, a)
+                },
+            )
+            .unwrap();
     }
 
     #[test]
     fn insert_many_siblings() {
         let world = setup_world_with_index_system();
         // Add a parent entity with many children
-        let (a, a1, a2, a3) = world.run(
-            |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                let a = entities.add_entity((), ());
-                let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(2)));
-                let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(3)));
+        let (a, a1, a2, a3) = world
+            .run(
+                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
+                    let a = entities.add_entity((), ());
+                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
+                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(2)));
+                    let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(3)));
 
-                (a, a1, a2, a3)
-            },
-        );
+                    (a, a1, a2, a3)
+                },
+            )
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
         // Run an anonymous system to verify the state of the indexes
-        world.run(
-            |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
-                // The root node should not have a sibling index
-                v_sibling_index
-                    .get(a)
-                    .expect_err("should not have sibling data");
+        world
+            .run(
+                |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
+                    // The root node should not have a sibling index
+                    v_sibling_index
+                        .get(a)
+                        .expect_err("should not have sibling data");
 
-                // The root node should have a parent index
-                let c: &ParentIndex = v_parent_index.get(a).expect("has children");
+                    // The root node should have a parent index
+                    let c: &ParentIndex = v_parent_index.get(a).expect("has children");
 
-                // The root node should have many children
-                assert_eq!(
-                    parent_children_ids(c),
-                    vec![a1, a2, a3],
-                    "should be in order"
-                );
+                    // The root node should have many children
+                    assert_eq!(
+                        parent_children_ids(c),
+                        vec![a1, a2, a3],
+                        "should be in order"
+                    );
 
-                // The children should not have a parent indexes
-                assert_eq!(v_parent_index.contains(a1), false);
-                assert_eq!(v_parent_index.contains(a2), false);
-                assert_eq!(v_parent_index.contains(a3), false);
+                    // The children should not have a parent indexes
+                    assert_eq!(v_parent_index.contains(a1), false);
+                    assert_eq!(v_parent_index.contains(a2), false);
+                    assert_eq!(v_parent_index.contains(a3), false);
 
-                // The first sibling should not have a prev sibling but have a next sibling
-                let a1_sib = v_sibling_index.get(a1).expect("should have sibling data");
-                assert_eq!(a1_sib.prev_sibling, None, "only child");
-                assert_eq!(a1_sib.next_sibling.unwrap().1, a2, "has sibling");
+                    // The first sibling should not have a prev sibling but have a next sibling
+                    let a1_sib = v_sibling_index.get(a1).expect("should have sibling data");
+                    assert_eq!(a1_sib.prev_sibling, None, "only child");
+                    assert_eq!(a1_sib.next_sibling.unwrap().1, a2, "has sibling");
 
-                // The middle sibling should have both prev and next siblings
-                let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
-                assert_eq!(a2_sib.prev_sibling.unwrap().1, a1, "has sibling");
-                assert_eq!(a2_sib.next_sibling.unwrap().1, a3, "has sibling");
+                    // The middle sibling should have both prev and next siblings
+                    let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
+                    assert_eq!(a2_sib.prev_sibling.unwrap().1, a1, "has sibling");
+                    assert_eq!(a2_sib.next_sibling.unwrap().1, a3, "has sibling");
 
-                // The last sibling should have a prev sibling but not have a next sibling
-                let a3_sib = v_sibling_index.get(a3).expect("should have sibling data");
-                assert_eq!(a3_sib.prev_sibling.unwrap().1, a2, "has sibling");
-                assert_eq!(a3_sib.next_sibling, None, "only child");
-            },
-        );
+                    // The last sibling should have a prev sibling but not have a next sibling
+                    let a3_sib = v_sibling_index.get(a3).expect("should have sibling data");
+                    assert_eq!(a3_sib.prev_sibling.unwrap().1, a2, "has sibling");
+                    assert_eq!(a3_sib.next_sibling, None, "only child");
+                },
+            )
+            .unwrap();
     }
 
     #[test]
     fn insert_deep_children() {
         let world = setup_world_with_index_system();
-        let (a, a1, a2, a3) = world.run(
-            |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                let a = entities.add_entity((), ());
-                let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a1, Ordered::hinted(2)));
-                let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a2, Ordered::hinted(3)));
+        let (a, a1, a2, a3) = world
+            .run(
+                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
+                    let a = entities.add_entity((), ());
+                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
+                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a1, Ordered::hinted(2)));
+                    let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a2, Ordered::hinted(3)));
 
-                (a, a1, a2, a3)
-            },
-        );
+                    (a, a1, a2, a3)
+                },
+            )
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
         // Run an anonymous system to verify the state of the indexes
-        world.run(
-            |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
-                // Each entity should have a parent index containing one child
-                let a_pi: &ParentIndex = v_parent_index.get(a).expect("has children");
-                assert_eq!(parent_children_ids(a_pi), vec![a1]);
+        world
+            .run(
+                |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
+                    // Each entity should have a parent index containing one child
+                    let a_pi: &ParentIndex = v_parent_index.get(a).expect("has children");
+                    assert_eq!(parent_children_ids(a_pi), vec![a1]);
 
-                let a1_pi: &ParentIndex = v_parent_index.get(a1).expect("has children");
-                assert_eq!(parent_children_ids(a1_pi), vec![a2]);
+                    let a1_pi: &ParentIndex = v_parent_index.get(a1).expect("has children");
+                    assert_eq!(parent_children_ids(a1_pi), vec![a2]);
 
-                let a2_pi: &ParentIndex = v_parent_index.get(a2).expect("has children");
-                assert_eq!(parent_children_ids(a2_pi), vec![a3]);
+                    let a2_pi: &ParentIndex = v_parent_index.get(a2).expect("has children");
+                    assert_eq!(parent_children_ids(a2_pi), vec![a3]);
 
-                // The leaf entity should not have a parent index
-                assert_eq!(v_parent_index.contains(a3), false);
+                    // The leaf entity should not have a parent index
+                    assert_eq!(v_parent_index.contains(a3), false);
 
-                // Each non-root entity should have a sibling index that is empty
-                let a1_sib = v_sibling_index.get(a1).expect("should have sibling data");
-                assert_eq!(a1_sib.prev_sibling, None, "only child");
-                assert_eq!(a1_sib.next_sibling, None, "only child");
+                    // Each non-root entity should have a sibling index that is empty
+                    let a1_sib = v_sibling_index.get(a1).expect("should have sibling data");
+                    assert_eq!(a1_sib.prev_sibling, None, "only child");
+                    assert_eq!(a1_sib.next_sibling, None, "only child");
 
-                let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
-                assert_eq!(a2_sib.prev_sibling, None, "only child");
-                assert_eq!(a2_sib.next_sibling, None, "only child");
+                    let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
+                    assert_eq!(a2_sib.prev_sibling, None, "only child");
+                    assert_eq!(a2_sib.next_sibling, None, "only child");
 
-                let a3_sib = v_sibling_index.get(a3).expect("should have sibling data");
-                assert_eq!(a3_sib.prev_sibling, None, "only child");
-                assert_eq!(a3_sib.next_sibling, None, "only child");
-            },
-        );
+                    let a3_sib = v_sibling_index.get(a3).expect("should have sibling data");
+                    assert_eq!(a3_sib.prev_sibling, None, "only child");
+                    assert_eq!(a3_sib.next_sibling, None, "only child");
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    // TODO: Complete this test
+    fn update_entity_as_child_of_self() {
+        let world = setup_world_with_index_system();
+        world
+            .run(
+                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
+                    let a = entities.add_entity((), ());
+                    entities.add_component(a, &mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
+
+                    a
+                },
+            )
+            .unwrap();
+
+        // Run the indexing workload
+        world.run_default().unwrap();
     }
 
     #[test]
     fn delete_only_child() {
         let world = setup_world_with_index_system();
         // Add a parent and child entity
-        let (a, a1) = world.run(
-            |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                let a = entities.add_entity((), ());
-                let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
+        let (a, a1) = world
+            .run(
+                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
+                    let a = entities.add_entity((), ());
+                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
 
-                (a, a1)
-            },
-        );
+                    (a, a1)
+                },
+            )
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
         // Delete the child entity
-        world.run(|mut vm_child_of: ViewMut<ChildOf>| {
-            // remove should not be used as it is untracked for whatever reason...
-            &mut vm_child_of.delete(a1);
-        });
+        world
+            .run(|mut vm_child_of: ViewMut<ChildOf>| {
+                // remove should not be used as it is untracked for whatever reason...
+                vm_child_of.delete(a1);
+            })
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
-        world.run(
-            |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
-                // There should be no sibling index for the previous parent
-                assert_eq!(v_sibling_index.contains(a), false);
+        world
+            .run(
+                |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
+                    // There should be no sibling index for the previous parent
+                    assert_eq!(v_sibling_index.contains(a), false);
 
-                // TODO: Should there be a parent index any more with no children?
-                // There should be a parent index with no children
-                let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
-                assert_eq!(parent_children_ids(c), vec![]);
-            },
-        )
+                    // TODO: Should there be a parent index any more with no children?
+                    // There should be a parent index with no children
+                    let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
+                    assert_eq!(parent_children_ids(c), vec![]);
+                },
+            )
+            .unwrap();
     }
 
     #[test]
     fn delete_first_and_last_siblings() {
         let world = setup_world_with_index_system();
-        let (a, a1, a2, a3) = world.run(
-            |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                let a = entities.add_entity((), ());
-                let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(2)));
-                let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(3)));
+        let (a, a1, a2, a3) = world
+            .run(
+                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
+                    let a = entities.add_entity((), ());
+                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
+                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(2)));
+                    let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(3)));
 
-                (a, a1, a2, a3)
-            },
-        );
+                    (a, a1, a2, a3)
+                },
+            )
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
         // Delete the first and last siblings
         world.run(|mut vm_child_of: ViewMut<ChildOf>| {
-            &mut vm_child_of.delete(a1);
-            &mut vm_child_of.delete(a3);
-        });
+            vm_child_of.delete(a1);
+            vm_child_of.delete(a3);
+        }).unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
-        world.run(
-            |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
-                // The root should only have one child now
-                let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
-                assert_eq!(parent_children_ids(c), vec![a2]);
+        world
+            .run(
+                |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
+                    // The root should only have one child now
+                    let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
+                    assert_eq!(parent_children_ids(c), vec![a2]);
 
-                // The previously first and last siblings should no longer have an index
-                assert_eq!(v_sibling_index.contains(a1), false);
-                assert_eq!(v_sibling_index.contains(a3), false);
+                    // The previously first and last siblings should no longer have an index
+                    assert_eq!(v_sibling_index.contains(a1), false);
+                    assert_eq!(v_sibling_index.contains(a3), false);
 
-                // The previously middle node should now not have any siblings
-                let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
-                assert_eq!(a2_sib.prev_sibling, None, "only child");
-                assert_eq!(a2_sib.next_sibling, None, "only child");
-            },
-        )
+                    // The previously middle node should now not have any siblings
+                    let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
+                    assert_eq!(a2_sib.prev_sibling, None, "only child");
+                    assert_eq!(a2_sib.next_sibling, None, "only child");
+                },
+            )
+            .unwrap();
     }
 
     #[test]
     fn delete_middle_sibling() {
         let world = setup_world_with_index_system();
-        let (a, a1, a2, a3) = world.run(
-            |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                let a = entities.add_entity((), ());
-                let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(2)));
-                let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(3)));
+        let (a, a1, a2, a3) = world
+            .run(
+                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
+                    let a = entities.add_entity((), ());
+                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
+                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(2)));
+                    let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(3)));
 
-                (a, a1, a2, a3)
-            },
-        );
+                    (a, a1, a2, a3)
+                },
+            )
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
         // Delete the first and last siblings
-        world.run(|mut vm_child_of: ViewMut<ChildOf>| {
-            &mut vm_child_of.delete(a2);
-        });
+        world
+            .run(|mut vm_child_of: ViewMut<ChildOf>| {
+                vm_child_of.delete(a2);
+            })
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
-        world.run(
-            |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
-                // The root should have 2 children now
-                let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
-                assert_eq!(parent_children_ids(c), vec![a1, a3]);
+        world
+            .run(
+                |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
+                    // The root should have 2 children now
+                    let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
+                    assert_eq!(parent_children_ids(c), vec![a1, a3]);
 
-                // The previously middle sibling should no longer have an index
-                assert_eq!(v_sibling_index.contains(a2), false);
+                    // The previously middle sibling should no longer have an index
+                    assert_eq!(v_sibling_index.contains(a2), false);
 
-                // The previously first and last siblings should now be connected
-                let a1_sib = v_sibling_index.get(a1).expect("should have sibling data");
-                assert_eq!(a1_sib.next_sibling.unwrap().1, a3);
+                    // The previously first and last siblings should now be connected
+                    let a1_sib = v_sibling_index.get(a1).expect("should have sibling data");
+                    assert_eq!(a1_sib.next_sibling.unwrap().1, a3);
 
-                let a3_sib = v_sibling_index.get(a3).expect("should have sibling data");
-                assert_eq!(a3_sib.prev_sibling.unwrap().1, a1);
-            },
-        )
+                    let a3_sib = v_sibling_index.get(a3).expect("should have sibling data");
+                    assert_eq!(a3_sib.prev_sibling.unwrap().1, a1);
+                },
+            )
+            .unwrap();
     }
 
     #[test]
     fn delete_middle_ancestor() {
         let world = setup_world_with_index_system();
-        let (a, a1, a2) = world.run(
-            |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                let a = entities.add_entity((), ());
-                let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a1, Ordered::hinted(2)));
+        let (a, a1, a2) = world
+            .run(
+                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
+                    let a = entities.add_entity((), ());
+                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
+                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a1, Ordered::hinted(2)));
 
-                (a, a1, a2)
-            },
-        );
+                    (a, a1, a2)
+                },
+            )
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
         // Delete the first and last siblings
-        world.run(|mut vm_child_of: ViewMut<ChildOf>| {
-            &mut vm_child_of.delete(a1);
-        });
+        world
+            .run(|mut vm_child_of: ViewMut<ChildOf>| {
+                vm_child_of.delete(a1);
+            })
+            .unwrap();
 
         // Run the indexing workload
-        world.run_default();
+        world.run_default().unwrap();
 
         // TODO: determine the correct behaviour for reparenting (do all descendents get deleted, do children get reparented?)
-        world.run(
-            |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
-                // The root now has no children
-                let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
-                assert_eq!(parent_children_ids(c), vec![]);
+        world
+            .run(
+                |v_parent_index: View<ParentIndex>, v_sibling_index: View<SiblingIndex>| {
+                    // The root now has no children
+                    let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
+                    assert_eq!(parent_children_ids(c), vec![]);
 
-                // The previous middle ancestor should no longer have a sibling index
-                assert_eq!(v_parent_index.contains(a1), true);
-                assert_eq!(v_sibling_index.contains(a1), false);
+                    // The previous middle ancestor should no longer have a sibling index
+                    assert_eq!(v_parent_index.contains(a1), true);
+                    assert_eq!(v_sibling_index.contains(a1), false);
 
-                // The previous grandchild still references its parent
-                let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
-                assert_eq!(a2_sib.parent_node, a1);
+                    // The previous grandchild still references its parent
+                    let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
+                    assert_eq!(a2_sib.parent_node, a1);
 
-                // Potential test code for descendent deletion
-                // The root should have no children
-                // let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
-                // assert_eq!(parent_children_ids(c), vec![]);
+                    // Potential test code for descendent deletion
+                    // The root should have no children
+                    // let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
+                    // assert_eq!(parent_children_ids(c), vec![]);
 
-                // The previous middle ancestor and its descendents should no longer have an index
-                // assert_eq!(v_parent_index.contains(a1), false);
-                // assert_eq!(v_sibling_index.contains(a1), false);
+                    // The previous middle ancestor and its descendents should no longer have an index
+                    // assert_eq!(v_parent_index.contains(a1), false);
+                    // assert_eq!(v_sibling_index.contains(a1), false);
 
-                // assert_eq!(v_parent_index.contains(a2), false);
-                // assert_eq!(v_sibling_index.contains(a2), false);
+                    // assert_eq!(v_parent_index.contains(a2), false);
+                    // assert_eq!(v_sibling_index.contains(a2), false);
 
-                // Potential test code for reparenting:
-                // The root should have the grandchild as a child now
-                // let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
-                // assert_eq!(parent_children_ids(c), vec![a2]);
+                    // Potential test code for reparenting:
+                    // The root should have the grandchild as a child now
+                    // let c: &ParentIndex = v_parent_index.get(a).expect("has a parent index");
+                    // assert_eq!(parent_children_ids(c), vec![a2]);
 
-                // The previous middle ancestor should no longer have an index
-                // assert_eq!(v_parent_index.contains(a1), false);
-                // assert_eq!(v_sibling_index.contains(a1), false);
+                    // The previous middle ancestor should no longer have an index
+                    // assert_eq!(v_parent_index.contains(a1), false);
+                    // assert_eq!(v_sibling_index.contains(a1), false);
 
-                // // The previous grandchild should now have the root as a parent
-                // let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
-                // assert_eq!(a2_sib.parent_node, a);
-            },
-        )
+                    // // The previous grandchild should now have the root as a parent
+                    // let a2_sib = v_sibling_index.get(a2).expect("should have sibling data");
+                    // assert_eq!(a2_sib.parent_node, a);
+                },
+            )
+            .unwrap();
     }
 
     #[test]
     fn test_indexing() {
         let mut app = App::new();
 
-        app.world.add_unique::<Vec<MoveCmd>>(Vec::new());
-
-        app.world.run(|mut vm_child_of: ViewMut<ChildOf>| {
+        app.run(|mut vm_child_of: ViewMut<ChildOf>| {
             vm_child_of.update_pack();
         });
 
         WorkloadBuilder::new("default")
-            .with_system(system!(reordering::tree_reordering))
             .with_system(system!(indexing::tree_indexing))
             .with_system(system!(|mut vm_child_of: ViewMut<ChildOf>| {
-                vm_child_of.clear_inserted_and_modified();
+                vm_child_of.clear_all_inserted_and_modified();
             }))
             .add_to_world(&mut app.world)
             .unwrap();
@@ -452,7 +509,9 @@ mod tests {
     #[test]
     fn test_indexing_with_plugin() {
         let app = App::new();
-        app.add_plugin_workload(TreePlugin);
+        let mut builder = AppBuilder::new(&app);
+        builder.add_plugin(TreePlugin::default());
+        builder.finish();
         test_with_indexing_with_world(app);
     }
 
@@ -529,10 +588,10 @@ mod tests {
 
         app.run(|mut vm_child_of: ViewMut<ChildOf>| {
             // remove should not be used as it is untracked for whatever reason...
-            &mut vm_child_of.delete(a7);
-            &mut vm_child_of.delete(a4);
-            &mut vm_child_of.delete(a0);
-            &mut vm_child_of.delete(a1b);
+            vm_child_of.delete(a7);
+            vm_child_of.delete(a4);
+            vm_child_of.delete(a0);
+            vm_child_of.delete(a1b);
         });
 
         app.update();

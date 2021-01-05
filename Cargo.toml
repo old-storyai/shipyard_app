@@ -6,8 +6,8 @@ version = "0.1.0"
 
 [features]
 default = []
-startup-stages = []
+wasm = ["shipyard/wasm"]
 
 [dependencies]
-shipyard = {version = "*", path = "../shipyard", features = ["panic"], default-features = false}
+shipyard = {version = "*", path = "../shipyard", features = [], default-features = false}
 tracing = "0.1"

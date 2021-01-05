@@ -70,7 +70,7 @@ pub fn tree_indexing(
         },
     );
 
-    vm_child_of.clear_inserted_and_modified();
+    vm_child_of.clear_all_inserted_and_modified();
 }
 
 fn insert_child_of(

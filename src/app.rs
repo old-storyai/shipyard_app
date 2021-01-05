@@ -49,15 +49,16 @@ impl App {
     // }
 
     /// Runs default workload
+    #[track_caller]
     pub fn update(&self) {
         let span = trace_span!("update");
         let _span = span.enter();
-        self.world.run_default();
+        self.world.run_default().unwrap();
     }
 
     #[track_caller]
     pub fn run<'s, B, R, S: shipyard::System<'s, (), B, R>>(&'s self, s: S) -> R {
-        self.world.try_run(s).unwrap()
+        self.world.run(s).unwrap()
     }
 
     #[track_caller]
@@ -66,7 +67,7 @@ impl App {
         s: S,
         data: Data,
     ) -> R {
-        self.world.try_run_with_data(s, data).unwrap()
+        self.world.run_with_data(s, data).unwrap()
     }
 
     // HMMM...

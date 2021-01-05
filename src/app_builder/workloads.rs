@@ -57,7 +57,7 @@ impl Workloads {
             .map(|(name, mut workload_builder)| {
                 if name == stage_name {
                     if let Some(apply_sys_first_time) = apply_sys_opt.take() {
-                        workload_builder.with_system(Ok(apply_sys_first_time));
+                        workload_builder.with_system(apply_sys_first_time);
                     }
                 }
 

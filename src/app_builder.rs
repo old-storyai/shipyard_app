@@ -52,7 +52,7 @@ pub struct AppWorkload(std::borrow::Cow<'static, str>);
 impl AppWorkload {
     #[track_caller]
     pub fn run(&self, app: &App) {
-        app.world.run_workload(&self.0);
+        app.world.run_workload(&self.0).unwrap();
     }
 }
 
@@ -130,7 +130,7 @@ impl<'a> AppBuilder<'a> {
 
         let mut resets_workload = WorkloadBuilder::default();
         for reset_system in resets {
-            resets_workload.with_system(Ok(reset_system));
+            resets_workload.with_system(reset_system);
         }
 
         let update_info: info::WorkloadInfo = stage_workloads
@@ -175,7 +175,7 @@ impl<'a> AppBuilder<'a> {
         type_id
     }
 
-    /// Update component `T`'s storage to be update_pack, and add [shipyard::sparse_set::SparseSet::clear_inserted_and_modified] as the last system.
+    /// Update component `T`'s storage to be update_pack, and add [shipyard::sparse_set::SparseSet::clear_all_inserted_and_modified] as the last system.
     #[track_caller]
     pub fn update_pack<T: 'static + Send + Sync>(&mut self, reason: &'static str) -> &mut Self {
         let type_id = self.tracked_type_id_of::<T>();
@@ -188,8 +188,8 @@ impl<'a> AppBuilder<'a> {
             }
             Entry::Vacant(list) => {
                 list.insert(vec![(self.track_current_plugin.clone(), reason)]);
-                self.app.world.borrow::<ViewMut<T>>().update_pack();
-                self.resets.push(system!(reset_update_pack::<T>).unwrap());
+                self.app.world.borrow::<ViewMut<T>>().unwrap().update_pack();
+                self.resets.push(system!(reset_update_pack::<T>));
             }
         }
 
@@ -197,11 +197,12 @@ impl<'a> AppBuilder<'a> {
     }
 
     /// Add a unique component
+    #[track_caller]
     pub fn add_unique<T>(&mut self, component: T) -> &mut Self
     where
         T: Send + Sync + 'static,
     {
-        self.app.world.add_unique(component);
+        self.app.world.add_unique(component).unwrap();
         let unique_type_id = self.tracked_type_id_of::<T>();
         self.track_uniques
             .entry(unique_type_id)
@@ -264,17 +265,17 @@ impl<'a> AppBuilder<'a> {
     // }
 
     #[track_caller]
-    pub fn add_system(&mut self, system: SystemResult) -> &mut Self {
+    pub fn add_system(&mut self, system: WorkloadSystem) -> &mut Self {
         self.stage_workloads
-            .add_system_to_stage(DEFAULT_STAGE, system.unwrap());
+            .add_system_to_stage(DEFAULT_STAGE, system);
 
         self
     }
 
     /// Ensure that this system is among the absolute last systems
     #[track_caller]
-    pub fn add_reset_system(&mut self, system: SystemResult) -> &mut Self {
-        self.resets.push(system.unwrap());
+    pub fn add_reset_system(&mut self, system: WorkloadSystem) -> &mut Self {
+        self.resets.push(system);
 
         self
     }
@@ -310,6 +311,6 @@ impl<'a> AppBuilder<'a> {
 }
 
 fn reset_update_pack<T>(mut vm_to_clear: ViewMut<T>) {
-    vm_to_clear.clear_inserted_and_modified();
+    vm_to_clear.clear_all_inserted_and_modified();
     vm_to_clear.take_removed_and_deleted();
 }
