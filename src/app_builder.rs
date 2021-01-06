@@ -47,10 +47,12 @@ impl<'a> AppBuilder<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct AppWorkload(std::borrow::Cow<'static, str>);
 
 impl AppWorkload {
     #[track_caller]
+    #[instrument(skip(app))]
     pub fn run(&self, app: &App) {
         app.world.run_workload(&self.0).unwrap();
     }
@@ -79,6 +81,7 @@ impl<'a> AppBuilder<'a> {
     }
     /// Finish [App] and report back each of the update stages with their [shipyard::info::WorkloadInfo].
     #[track_caller]
+    #[instrument(skip(self))]
     pub(crate) fn finish_with_info_named(
         self,
         update_stage: std::borrow::Cow<'static, str>,
@@ -128,27 +131,22 @@ impl<'a> AppBuilder<'a> {
             );
         }
 
-        let mut resets_workload = WorkloadBuilder::default();
+        let mut update_workload = stage_workloads.ordered.into_iter().map(|(_, wb)| wb).fold(
+            WorkloadBuilder::new(update_stage.clone()),
+            |mut acc: WorkloadBuilder, mut wb: WorkloadBuilder| {
+                acc.append(&mut wb);
+                acc
+            },
+        );
+
         for reset_system in resets {
-            resets_workload.with_system(reset_system);
+            update_workload.with_system(reset_system);
         }
 
-        let update_info: info::WorkloadInfo = stage_workloads
-            .ordered
-            .into_iter()
-            .map(|(_, wb)| wb)
-            .chain(std::iter::once(resets_workload))
-            .fold(
-                WorkloadBuilder::new(update_stage.clone()),
-                |mut acc: WorkloadBuilder, mut wb: WorkloadBuilder| {
-                    acc.append(&mut wb);
-                    acc
-                },
-            )
-            .add_to_world_with_info(&app.world)
-            .unwrap();
-
-        (AppWorkload(update_stage), update_info)
+        (
+            AppWorkload(update_stage),
+            update_workload.add_to_world_with_info(&app.world).unwrap(),
+        )
     }
 
     fn empty(app: &App) -> AppBuilder<'_> {
@@ -185,11 +183,13 @@ impl<'a> AppBuilder<'a> {
                 // no need to pack again
                 list.get_mut()
                     .push((self.track_current_plugin.clone(), reason));
+                trace!(plugin = ?self.track_current_plugin, storage = ?type_name::<T>(), ?reason, result = "existed", "update_pack");
             }
             Entry::Vacant(list) => {
                 list.insert(vec![(self.track_current_plugin.clone(), reason)]);
                 self.app.world.borrow::<ViewMut<T>>().unwrap().update_pack();
                 self.resets.push(system!(reset_update_pack::<T>));
+                trace!(plugin = ?self.track_current_plugin, storage = ?type_name::<T>(), ?reason, result = "added", "update_pack");
             }
         }
 
@@ -202,6 +202,7 @@ impl<'a> AppBuilder<'a> {
     where
         T: Send + Sync + 'static,
     {
+        trace!(plugin = ?self.track_current_plugin, unique = ?type_name::<T>(), "add_unique");
         self.app.world.add_unique(component).unwrap();
         let unique_type_id = self.tracked_type_id_of::<T>();
         self.track_uniques
@@ -274,7 +275,8 @@ impl<'a> AppBuilder<'a> {
 
     /// Ensure that this system is among the absolute last systems
     #[track_caller]
-    pub fn add_reset_system(&mut self, system: WorkloadSystem) -> &mut Self {
+    pub fn add_reset_system(&mut self, system: WorkloadSystem, reason: &str) -> &mut Self {
+        trace!(plugin = ?self.track_current_plugin, ?reason, "add_reset_system");
         self.resets.push(system);
 
         self
@@ -285,6 +287,8 @@ impl<'a> AppBuilder<'a> {
         T: Plugin,
     {
         let plugin_type_id = self.tracked_type_id_of::<T>();
+        let span = trace_span!("add_plugin", plugin = ?self.track_current_plugin, adding = ?type_name::<T>());
+        let _span = span.enter();
         if let Some(plugin_id) = self.track_added_plugins.get(&plugin_type_id) {
             panic!(
                 "Plugin ({}) cannot add plugin as it's already added as \"{}\"",
@@ -301,8 +305,9 @@ impl<'a> AppBuilder<'a> {
         }
 
         self.track_current_plugin.push::<T>();
-        plugin.build(self);
-        trace!("added plugin: {}", self.track_current_plugin);
+        trace_span!("build", plugin = ?self.track_current_plugin).in_scope(|| {
+            plugin.build(self);
+        });
         self.track_added_plugins
             .insert(plugin_type_id, self.track_current_plugin.clone());
         self.track_current_plugin.pop();
@@ -311,6 +316,8 @@ impl<'a> AppBuilder<'a> {
 }
 
 fn reset_update_pack<T>(mut vm_to_clear: ViewMut<T>) {
-    vm_to_clear.clear_all_inserted_and_modified();
-    vm_to_clear.take_removed_and_deleted();
+    trace_span!("reset_update_pack", storage_name = type_name::<T>()).in_scope(|| {
+        vm_to_clear.clear_all_inserted_and_modified();
+        vm_to_clear.take_removed_and_deleted();
+    });
 }

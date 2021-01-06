@@ -36,6 +36,8 @@ impl App {
     where
         P: Plugin + 'static,
     {
+        let span = trace_span!("add_plugin_workload", plugin = ?type_name::<P>());
+        let _span = span.enter();
         let mut builder = AppBuilder::new(&self);
         plugin.build(&mut builder);
         let workload_name = type_name::<P>();
