@@ -2,6 +2,7 @@ use crate::{app::App, plugin::Plugin};
 use shipyard::*;
 use std::{
     any::{type_name, TypeId},
+    borrow::Cow,
     collections::hash_map::Entry,
     collections::HashMap,
 };
@@ -47,14 +48,24 @@ impl<'a> AppBuilder<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct AppWorkload(std::borrow::Cow<'static, str>);
+#[derive(Clone, Debug)]
+pub struct AppWorkload(pub(crate) Vec<std::borrow::Cow<'static, str>>);
+
+#[derive(Clone, Debug)]
+pub struct AppWorkloadInfo {
+    pub batch_info: Vec<info::BatchInfo>,
+    pub name: Cow<'static, str>,
+}
 
 impl AppWorkload {
     #[track_caller]
     #[instrument(skip(app))]
     pub fn run(&self, app: &App) {
-        app.world.run_workload(&self.0).unwrap();
+        for workload_name in &self.0 {
+            let span = trace_span!("AppWorkload::run", ?workload_name);
+            let _span = span.enter();
+            app.world.run_workload(&workload_name).unwrap();
+        }
     }
 }
 
@@ -74,18 +85,19 @@ impl<'a> AppBuilder<'a> {
         self.finish_with_info().0
     }
 
-    /// Finish [App] and report back each of the update stages with their [shipyard::info::WorkloadInfo].
+    /// Finish [App] and report back each of the update stages with their [AppWorkloadInfo].
     #[track_caller]
-    pub fn finish_with_info(self) -> (AppWorkload, info::WorkloadInfo) {
+    pub fn finish_with_info(self) -> (AppWorkload, AppWorkloadInfo) {
         self.finish_with_info_named("update".into())
     }
-    /// Finish [App] and report back each of the update stages with their [shipyard::info::WorkloadInfo].
+
+    /// Finish [App] and report back each of the update stages with their [AppWorkloadInfo].
     #[track_caller]
     #[instrument(skip(self))]
     pub(crate) fn finish_with_info_named(
         self,
         update_stage: std::borrow::Cow<'static, str>,
-    ) -> (AppWorkload, info::WorkloadInfo) {
+    ) -> (AppWorkload, AppWorkloadInfo) {
         let AppBuilder {
             app,
             resets,
@@ -143,9 +155,13 @@ impl<'a> AppBuilder<'a> {
             update_workload.with_system(reset_system);
         }
 
+        let info = update_workload.add_to_world_with_info(&app.world).unwrap();
         (
-            AppWorkload(update_stage),
-            update_workload.add_to_world_with_info(&app.world).unwrap(),
+            AppWorkload(vec![update_stage]),
+            AppWorkloadInfo {
+                batch_info: info.batch_info,
+                name: info.name,
+            },
         )
     }
 

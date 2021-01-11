@@ -1,6 +1,6 @@
 use std::any::type_name;
 
-use crate::{app_builder::AppBuilder, AppWorkload, Plugin};
+use crate::{AppWorkload, AppWorkloadInfo, Plugin, app_builder::AppBuilder};
 use shipyard::*;
 use tracing::trace_span;
 
@@ -36,12 +36,20 @@ impl App {
     where
         P: Plugin + 'static,
     {
-        let span = trace_span!("add_plugin_workload", plugin = ?type_name::<P>());
+        self.add_plugin_workload_with_info(plugin).0
+    }
+
+    #[track_caller]
+    pub fn add_plugin_workload_with_info<P>(&self, plugin: P) -> (AppWorkload, AppWorkloadInfo)
+    where
+        P: Plugin + 'static,
+    {
+        let span = trace_span!("add_plugin_workload_with_info", plugin = ?type_name::<P>());
         let _span = span.enter();
         let mut builder = AppBuilder::new(&self);
         plugin.build(&mut builder);
         let workload_name = type_name::<P>();
-        builder.finish_with_info_named(workload_name.into()).0
+        builder.finish_with_info_named(workload_name.into())
     }
 
     // pub fn update(&self) {
