@@ -10,6 +10,10 @@ pub trait Plugin: Any + Send + Sync {
     fn name(&self) -> &str {
         std::any::type_name::<Self>()
     }
+    /// If you override this to return true, then you will be allowed to add your plugin multiple times.
+    fn can_add_multiple_times(&self) -> bool {
+        false
+    }
 }
 
 // pub type CreatePlugin = unsafe fn() -> *mut dyn Plugin;

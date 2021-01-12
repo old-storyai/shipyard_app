@@ -282,6 +282,7 @@ impl<'a> AppBuilder<'a> {
         self
     }
 
+    #[track_caller]
     pub fn add_plugin<T>(&mut self, plugin: T) -> &mut Self
     where
         T: Plugin,
@@ -290,10 +291,12 @@ impl<'a> AppBuilder<'a> {
         let span = trace_span!("add_plugin", plugin = ?self.track_current_plugin, adding = ?type_name::<T>());
         let _span = span.enter();
         if let Some(plugin_id) = self.track_added_plugins.get(&plugin_type_id) {
-            panic!(
-                "Plugin ({}) cannot add plugin as it's already added as \"{}\"",
-                self.track_current_plugin, plugin_id
-            );
+            if !plugin.can_add_multiple_times() {
+                panic!(
+                    "Plugin ({}) cannot add plugin as it's already added as \"{}\". (Implement `Plugin::can_add_multiple_times` to override)",
+                    self.track_current_plugin, plugin_id
+                );
+            }
         }
 
         if self.track_current_plugin.contains(plugin_type_id) {
