@@ -2,6 +2,7 @@ mod app;
 mod app_builder;
 mod plugin;
 mod app_add_cycle;
+mod app_changed;
 
 pub use app::*;
 pub use app_builder::*;
