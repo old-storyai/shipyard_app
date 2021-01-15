@@ -9,9 +9,7 @@ use std::{
 use tracing::*;
 
 mod plugin_id;
-mod workloads;
 use plugin_id::PluginId;
-use workloads::Workloads;
 
 /// Name of app stage responsible for doing most app logic. Systems should be registered here by default.
 pub const DEFAULT_STAGE: &str = "default";
@@ -51,7 +49,11 @@ impl PluginsAssociatedMap {
     }
 
     /// Return new number of plugins associated
-    fn associate<T: 'static>(&mut self, plugin: &PluginId, reason: &'static str) -> AssociateResult {
+    fn associate<T: 'static>(
+        &mut self,
+        plugin: &PluginId,
+        reason: &'static str,
+    ) -> AssociateResult {
         let type_id = self.track_type_names.tracked_type_id_of::<T>();
 
         let assoc = PluginAssociated {
@@ -78,8 +80,8 @@ impl PluginsAssociatedMap {
 /// Configure [App]s using the builder pattern
 pub struct AppBuilder<'a> {
     pub app: &'a App,
-    stage_workloads: Workloads,
     resets: Vec<WorkloadSystem>,
+    systems: Vec<WorkloadSystem>,
     /// track the plugins previously added to enable checking that plugin peer dependencies are satisified
     track_added_plugins: HashMap<TypeId, PluginId>,
     /// track the currently being used plugin ([PluginId] is a stack since some plugins add other plugins creating a nest)
@@ -99,13 +101,7 @@ pub struct AppBuilder<'a> {
 
 impl<'a> AppBuilder<'a> {
     pub fn new(app: &App) -> AppBuilder<'_> {
-        let mut app_builder = AppBuilder::empty(app);
-        app_builder.add_default_stages();
-        app_builder
-    }
-
-    fn add_default_stages(&mut self) -> &mut Self {
-        self.add_stage(DEFAULT_STAGE)
+        AppBuilder::empty(app)
     }
 }
 
@@ -194,7 +190,7 @@ impl<'a> AppBuilder<'a> {
         let AppBuilder {
             app,
             resets,
-            stage_workloads,
+            systems,
             track_added_plugins: _,
             track_current_plugin: _,
             track_type_names,
@@ -204,45 +200,10 @@ impl<'a> AppBuilder<'a> {
             track_plugin_dependencies: _,
         } = self;
 
-        // TODO at cycle check level
-        // // trace! out Unique dependencies for diagnostics
-        // for (unique_type_id, provided_by) in track_uniques {
-        //     let depended_on_by: Vec<(PluginId, &'static str)> = track_unique_dependencies
-        //         .remove(&unique_type_id)
-        //         .unwrap_or_default();
-
-        //     let unique_type_name = *track_type_names.get(&unique_type_id).unwrap();
-        //     if provided_by.len() > 1 {
-        //         warn!(name = ?unique_type_name, ?provided_by, ?depended_on_by, "Unique defined by multiple Plugins, only the last registered plugin's unique will be used at startup");
-        //     }
-
-        //     // good to go
-        //     trace!(name = ?unique_type_name, ?provided_by, ?depended_on_by, "Unique");
-        // }
-
-        // TODO: Check at cycle level
-        // // assert there are no remaining unique dependencies
-        // let remaining_unique_deps = track_unique_dependencies
-        //     .into_iter()
-        //     .map(|(unique_type_id, dependents)| {
-        //         let unique_type_name = *track_type_names.get(&unique_type_id).unwrap();
-
-        //         format!("- {} required by: {:?}", unique_type_name, dependents)
-        //     })
-        //     .collect::<Vec<String>>();
-
-        // if !remaining_unique_deps.is_empty() {
-        //     panic!(
-        //         "Failed to finish app due to unmet unique dependencies:\n{}\n\n{}",
-        //         remaining_unique_deps.join("\n"),
-        //         " * You can add the unique using AppBuilder::add_unique or remove the AppBuilder::add_unique_dependency(s) to resolve this issue."
-        //     );
-        // }
-
-        let mut update_workload = stage_workloads.ordered.into_iter().map(|(_, wb)| wb).fold(
+        let mut update_workload = systems.into_iter().fold(
             WorkloadBuilder::new(update_stage.clone()),
-            |mut acc: WorkloadBuilder, mut wb: WorkloadBuilder| {
-                acc.append(&mut wb);
+            |mut acc: WorkloadBuilder, system: WorkloadSystem| {
+                acc.with_system(system);
                 acc
             },
         );
@@ -261,33 +222,6 @@ impl<'a> AppBuilder<'a> {
                 name: info.name,
             },
         )
-    }
-
-    fn empty(app: &App) -> AppBuilder<'_> {
-        AppBuilder {
-            app,
-            resets: Vec::new(),
-            stage_workloads: Workloads::new(),
-            track_added_plugins: Default::default(),
-            track_current_plugin: Default::default(),
-            track_type_names: Default::default(),
-            track_plugin_dependencies: PluginsAssociatedMap::new(
-                "Plugin depends on Plugin",
-                &app.type_names,
-            ),
-            track_uniques_provided: PluginsAssociatedMap::new(
-                "Plugin provides Unique",
-                &app.type_names,
-            ),
-            track_unique_dependencies: PluginsAssociatedMap::new(
-                "Plugin depends on Unique",
-                &app.type_names,
-            ),
-            track_update_packed: PluginsAssociatedMap::new(
-                "Plugin requires update_pack",
-                &app.type_names,
-            ),
-        }
     }
 
     /// Lookup the type id while simultaneously storing the type name to be referenced later
@@ -364,29 +298,36 @@ impl<'a> AppBuilder<'a> {
         self
     }
 
-    fn add_stage(&mut self, stage_name: &'static str) -> &mut Self {
-        self.stage_workloads.add_stage(stage_name);
-        self
+    fn empty(app: &App) -> AppBuilder<'_> {
+        AppBuilder {
+            app,
+            resets: Vec::new(),
+            systems: Vec::new(),
+            track_added_plugins: Default::default(),
+            track_current_plugin: Default::default(),
+            track_type_names: Default::default(),
+            track_plugin_dependencies: PluginsAssociatedMap::new(
+                "Plugin depends on Plugin",
+                &app.type_names,
+            ),
+            track_uniques_provided: PluginsAssociatedMap::new(
+                "Plugin provides Unique",
+                &app.type_names,
+            ),
+            track_unique_dependencies: PluginsAssociatedMap::new(
+                "Plugin depends on Unique",
+                &app.type_names,
+            ),
+            track_update_packed: PluginsAssociatedMap::new(
+                "Plugin requires update_pack",
+                &app.type_names,
+            ),
+        }
     }
-
-    // pub fn add_stage_after(&mut self, target: &'static str, stage_name: &'static str) -> &mut Self {
-    //     self.stage_workloads.add_stage_after(target, stage_name);
-    //     self
-    // }
-
-    // pub fn add_stage_before(
-    //     &mut self,
-    //     target: &'static str,
-    //     stage_name: &'static str,
-    // ) -> &mut Self {
-    //     self.stage_workloads.add_stage_before(target, stage_name);
-    //     self
-    // }
 
     #[track_caller]
     pub fn add_system(&mut self, system: WorkloadSystem) -> &mut Self {
-        self.stage_workloads
-            .add_system_to_stage(DEFAULT_STAGE, system);
+        self.systems.push(system);
 
         self
     }

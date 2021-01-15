@@ -9,19 +9,7 @@ use tracing::trace_span;
 pub struct App {
     pub world: World,
     pub(crate) type_names: TypeNames,
-    // pub(crate) update_stage: &'static str,
-    // pub(crate) startup_stages: Vec<&'static str>,
-    // pub resources: Resources,
-    // pub runner: Box<dyn Fn(App)>,
-    // pub schedule: Schedule,
-    // pub executor: ParallelExecutor,
-    // pub startup_schedule: Schedule,
-    // pub startup_executor: ParallelExecutor,
 }
-
-// fn run_once(mut app: App) {
-//     app.update();
-// }
 
 impl App {
     #[allow(clippy::new_without_default)]
@@ -56,12 +44,6 @@ impl App {
         builder.finish_with_info_named(workload_name.into())
     }
 
-    // pub fn update(&self) {
-    //     let span = trace_span!("update");
-    //     let _span = span.enter();
-    //     self.world.run_workload(self.update_stage);
-    // }
-
     /// Runs default workload
     #[track_caller]
     pub fn update(&self) {
@@ -83,12 +65,4 @@ impl App {
     ) -> R {
         self.world.run_with_data(s, data).unwrap()
     }
-
-    // HMMM...
-    // pub fn get_unique<T: Send + Sync + 'static>(mut self) {
-    // HMMM...
-    // }
 }
-
-// /// An event that indicates the app should exit. This will fully exit the app process.
-// pub struct AppExit;
