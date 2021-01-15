@@ -1,6 +1,6 @@
 use std::any::type_name;
 
-use crate::{AppWorkload, AppWorkloadInfo, Plugin, app_builder::AppBuilder};
+use crate::{app_builder::AppBuilder, type_names::TypeNames, AppWorkload, AppWorkloadInfo, Plugin};
 use shipyard::*;
 use tracing::trace_span;
 
@@ -8,6 +8,7 @@ use tracing::trace_span;
 /// Containers of app logic and data
 pub struct App {
     pub world: World,
+    pub(crate) type_names: TypeNames,
     // pub(crate) update_stage: &'static str,
     // pub(crate) startup_stages: Vec<&'static str>,
     // pub resources: Resources,
@@ -28,7 +29,10 @@ impl App {
         App::new_with_world(World::new())
     }
     pub fn new_with_world(world: World) -> App {
-        App { world }
+        App {
+            world,
+            type_names: TypeNames::default(),
+        }
     }
 
     #[track_caller]

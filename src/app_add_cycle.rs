@@ -1,4 +1,4 @@
-use crate::{App, AppWorkload, AppWorkloadInfo};
+use crate::{App, AppWorkload, AppWorkloadInfo, CycleWorkload};
 
 macro_rules! fail {
     ($msg:expr $(,)?) => ({ return Err(String::from($msg)) });
@@ -20,11 +20,11 @@ impl App {
 
         // fail!("check_cycle: {:#?}", cycle);
 
-        Ok(AppWorkload(
-            cycle
+        Ok(AppWorkload::Cycle(CycleWorkload {
+            names: cycle
                 .iter()
-                .flat_map(|(a, _)| a.0.iter().cloned())
+                .flat_map(|(a, _)| a.names().into_iter())
                 .collect(),
-        ))
+        }))
     }
 }
