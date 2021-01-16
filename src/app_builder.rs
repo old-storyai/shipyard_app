@@ -89,11 +89,6 @@ impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
                 .map_or(Vec::new(), |val| val.to_vec()),
         )
     }
-    pub(crate) fn associate_all(&mut self, type_id: &TypeId, all: Vec<T>) {
-        for assoc in all {
-            self.associate(*type_id, assoc);
-        }
-    }
 
     pub(crate) fn associate(&mut self, type_id: TypeId, assoc: T) -> AssociateResult {
         let type_name = self.track_type_names.lookup_name(&type_id).unwrap();
