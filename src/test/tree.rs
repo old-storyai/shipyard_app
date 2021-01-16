@@ -489,7 +489,7 @@ mod tests {
 
     #[test]
     fn test_indexing() {
-        let mut app = App::new();
+        let app = App::new();
 
         app.run(|mut vm_child_of: ViewMut<ChildOf>| {
             vm_child_of.update_pack();

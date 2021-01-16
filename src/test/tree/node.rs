@@ -1,8 +1,5 @@
 use shipyard::EntityId;
 
-pub const MAX_ORDERED: Ordered = Ordered(std::u32::MAX);
-pub const MIN_ORDERED: Ordered = Ordered(std::u32::MIN);
-
 /// ChildOf is the source of truth when it comes to the structure of things in trees.
 ///
 /// .0 is parent EntityId, .1 is Ordered relative to siblings

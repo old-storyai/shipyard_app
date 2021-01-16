@@ -11,3 +11,6 @@ wasm = ["shipyard/wasm"]
 [dependencies]
 shipyard = {version = "*", path = "../shipyard", features = [], default-features = false}
 tracing = "0.1"
+
+[dev-dependencies]
+tracing-subscriber = {version = "0.2", features = ["chrono", "env-filter", "fmt"]}

@@ -5,6 +5,7 @@ use std::{
     borrow::Cow,
     collections::hash_map::Entry,
     collections::HashMap,
+    rc::Rc,
 };
 use tracing::*;
 
@@ -14,17 +15,30 @@ use plugin_id::PluginId;
 /// Name of app stage responsible for doing most app logic. Systems should be registered here by default.
 pub const DEFAULT_STAGE: &str = "default";
 
-struct PluginAssociated {
-    plugin: PluginId,
-    reason: &'static str,
+#[derive(Clone, Debug)]
+pub(crate) struct PluginAssociated {
+    pub(crate) plugin: PluginId,
+    pub(crate) reason: &'static str,
 }
 
-struct PluginsAssociatedMap {
-    name: &'static str,
-    track_type_names: TypeNames,
-    type_plugins_lookup: HashMap<TypeId, Vec<PluginAssociated>>,
+pub(crate) struct PluginsAssociatedMap {
+    pub(crate) name: &'static str,
+    pub(crate) track_type_names: TypeNames,
+    pub(crate) type_plugins_lookup: HashMap<TypeId, Vec<PluginAssociated>>,
 }
 
+impl std::fmt::Debug for PluginsAssociatedMap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entry(&"association", &self.name)
+            .entries(
+                self.entries()
+                    .into_iter()
+                    .map(|((_, name), associated)| (name, associated)),
+            )
+            .finish()
+    }
+}
 pub enum AssociateResult {
     First,
     Nth(usize),
@@ -40,7 +54,7 @@ impl AssociateResult {
 }
 
 impl PluginsAssociatedMap {
-    fn new(name: &'static str, track_type_names: &TypeNames) -> Self {
+    pub(crate) fn new(name: &'static str, track_type_names: &TypeNames) -> Self {
         PluginsAssociatedMap {
             name,
             track_type_names: track_type_names.clone(),
@@ -48,31 +62,103 @@ impl PluginsAssociatedMap {
         }
     }
 
+    pub(crate) fn entries(&self) -> Vec<((TypeId, &'static str), Vec<PluginAssociated>)> {
+        self.type_plugins_lookup
+            .iter()
+            .map(
+                |(id, associations)| -> ((TypeId, &'static str), Vec<PluginAssociated>) {
+                    let name = self
+                        .track_type_names
+                        .lookup_name(&id)
+                        .expect("all type ids with associations have a name saved");
+                    (
+                        (*id, name),
+                        associations.iter().map(Clone::clone).collect(),
+                    )
+                },
+            )
+            .collect()
+    }
+
+    pub(crate) fn get_plugins(&self, type_id: &TypeId) -> (&'static str, Vec<PluginAssociated>) {
+        (
+            self.track_type_names
+                .lookup_name(type_id)
+                .expect("type_id has name"),
+            self.type_plugins_lookup
+                .get(&type_id)
+                .map_or(Vec::new(), |val| val.to_vec()),
+        )
+    }
+    pub(crate) fn associate_all(&mut self, type_id: &TypeId, all: Vec<PluginAssociated>) {
+        for assoc in all {
+            self._associate(*type_id, assoc);
+        }
+    }
+
     /// Return new number of plugins associated
-    fn associate<T: 'static>(
+    pub(crate) fn associate<T: 'static>(
         &mut self,
         plugin: &PluginId,
         reason: &'static str,
     ) -> AssociateResult {
         let type_id = self.track_type_names.tracked_type_id_of::<T>();
-
         let assoc = PluginAssociated {
             plugin: plugin.clone(),
             reason,
         };
+        self._associate(type_id, assoc)
+    }
 
+    fn _associate(&mut self, type_id: TypeId, assoc: PluginAssociated) -> AssociateResult {
+        let type_name = self.track_type_names.lookup_name(&type_id).unwrap();
         match self.type_plugins_lookup.entry(type_id) {
             Entry::Occupied(mut list) => {
+                trace!(plugin = ?assoc.plugin, with = type_name, reason = ?assoc.reason, result = "existed", "Associated {}", self.name);
                 // no need to pack again
                 list.get_mut().push(assoc);
-                trace!(?plugin, with = ?type_name::<T>(), ?reason, result = "existed", "Associated {}", self.name);
                 AssociateResult::Nth(list.get().len())
             }
             Entry::Vacant(list) => {
+                trace!(plugin = ?assoc.plugin, with = type_name, reason = ?assoc.reason, result = "added", "Associated {}", self.name);
                 list.insert(vec![assoc]);
-                trace!(?plugin, with = ?type_name::<T>(), ?reason, result = "added", "Associated {}", self.name);
                 AssociateResult::First
             }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct WorkloadSignature {
+    /// track the plugins directly required by other plugins
+    pub track_plugin_dependencies: PluginsAssociatedMap,
+    /// unique type id to list of plugin type ids that provided a value for it it
+    pub track_uniques_provided: PluginsAssociatedMap,
+    /// unique type id to list of (plugin type id, reason string)
+    pub track_unique_dependencies: PluginsAssociatedMap,
+    /// update component storage type id to list of (plugin type id, reason string)
+    pub track_update_packed: PluginsAssociatedMap,
+}
+
+impl WorkloadSignature {
+    pub(crate) fn new(type_names: &TypeNames) -> Self {
+        WorkloadSignature {
+            track_plugin_dependencies: PluginsAssociatedMap::new(
+                "Plugin depends on Plugin",
+                &type_names,
+            ),
+            track_uniques_provided: PluginsAssociatedMap::new(
+                "Plugin provides Unique",
+                &type_names,
+            ),
+            track_unique_dependencies: PluginsAssociatedMap::new(
+                "Plugin depends on Unique",
+                &type_names,
+            ),
+            track_update_packed: PluginsAssociatedMap::new(
+                "Plugin requires update_pack",
+                &type_names,
+            ),
         }
     }
 }
@@ -89,14 +175,7 @@ pub struct AppBuilder<'a> {
     track_current_plugin: PluginId,
     /// take a record of type names as we come across them for diagnostics
     track_type_names: TypeNames,
-    /// track the plugins directly required by other plugins
-    track_plugin_dependencies: PluginsAssociatedMap,
-    /// unique type id to list of plugin type ids that provided a value for it it
-    track_uniques_provided: PluginsAssociatedMap,
-    /// unique type id to list of (plugin type id, reason string)
-    track_unique_dependencies: PluginsAssociatedMap,
-    /// update component storage type id to list of (plugin type id, reason string)
-    track_update_packed: PluginsAssociatedMap,
+    signature: WorkloadSignature,
 }
 
 impl<'a> AppBuilder<'a> {
@@ -106,54 +185,36 @@ impl<'a> AppBuilder<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct CycleWorkload {
+pub struct AppWorkload {
     pub(crate) names: Vec<std::borrow::Cow<'static, str>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct SingleWorkload {
-    pub(crate) name: std::borrow::Cow<'static, str>,
-    // ... requirements and such
-}
-
-#[derive(Clone, Debug)]
-pub enum AppWorkload {
-    Cycle(CycleWorkload),
-    Single(SingleWorkload),
-}
-
-impl AppWorkload {
-    pub(crate) fn names(&self) -> Vec<std::borrow::Cow<'static, str>> {
-        match self {
-            AppWorkload::Cycle(c) => c.names.clone(),
-            AppWorkload::Single(n) => vec![n.name.clone()],
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct AppWorkloadInfo {
-    pub batch_info: Vec<info::BatchInfo>,
+    pub(crate) type_names: Blind<TypeNames>,
+    pub(crate) batch_info: Vec<info::BatchInfo>,
+    /// Self-imposed constraints declared by the workload
+    pub(crate) signature: Rc<WorkloadSignature>,
     pub name: Cow<'static, str>,
+}
+
+#[derive(Clone)]
+pub(crate) struct Blind<T: Clone + 'static>(pub T);
+
+impl<T: Clone + 'static> std::fmt::Debug for Blind<T> {
+    fn fmt(&self, mut f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(&mut f, "Blind<{}>", type_name::<T>())
+    }
 }
 
 impl AppWorkload {
     #[track_caller]
     #[instrument(skip(app))]
     pub fn run(&self, app: &App) {
-        match self {
-            AppWorkload::Cycle(CycleWorkload { names }) => {
-                for workload_name in names.iter() {
-                    let span = trace_span!("AppWorkload::run", ?workload_name);
-                    let _span = span.enter();
-                    app.world.run_workload(&workload_name).unwrap();
-                }
-            }
-            AppWorkload::Single(SingleWorkload { name }) => {
-                let span = trace_span!("AppWorkload::run", workload_name = ?name);
-                let _span = span.enter();
-                app.world.run_workload(&name).unwrap();
-            }
+        for workload_name in self.names.iter() {
+            let span = trace_span!("AppWorkload::run", ?workload_name);
+            let _span = span.enter();
+            app.world.run_workload(&workload_name).unwrap();
         }
     }
 }
@@ -193,11 +254,8 @@ impl<'a> AppBuilder<'a> {
             systems,
             track_added_plugins: _,
             track_current_plugin: _,
-            track_type_names,
-            track_update_packed: _,
-            track_uniques_provided: track_uniques,
-            mut track_unique_dependencies,
-            track_plugin_dependencies: _,
+            track_type_names: _,
+            signature,
         } = self;
 
         let mut update_workload = systems.into_iter().fold(
@@ -214,12 +272,15 @@ impl<'a> AppBuilder<'a> {
 
         let info = update_workload.add_to_world_with_info(&app.world).unwrap();
         (
-            AppWorkload::Cycle(CycleWorkload {
+            AppWorkload {
                 names: vec![update_stage],
-            }),
+                // signature: Rc::new(signature),
+            },
             AppWorkloadInfo {
                 batch_info: info.batch_info,
+                type_names: Blind(app.type_names.clone()),
                 name: info.name,
+                signature: Rc::new(signature),
             },
         )
     }
@@ -233,6 +294,7 @@ impl<'a> AppBuilder<'a> {
     #[track_caller]
     pub fn update_pack<T: 'static + Send + Sync>(&mut self, reason: &'static str) -> &mut Self {
         if self
+            .signature
             .track_update_packed
             .associate::<T>(&self.track_current_plugin, reason)
             .is_first()
@@ -251,6 +313,7 @@ impl<'a> AppBuilder<'a> {
         T: Send + Sync + 'static,
     {
         if self
+            .signature
             .track_uniques_provided
             .associate::<T>(&self.track_current_plugin, "<not provided>")
             .is_first()
@@ -258,8 +321,8 @@ impl<'a> AppBuilder<'a> {
             self.app.world.add_unique(component).unwrap();
         } else {
             warn!(
-                "Unique({}) already provided by another Plugin",
-                type_name::<T>()
+                "Unique({}) already provided by another plugin in the plugin workload.",
+                type_name::<T>(),
             )
         }
 
@@ -274,7 +337,8 @@ impl<'a> AppBuilder<'a> {
     where
         T: Send + Sync + 'static,
     {
-        self.track_unique_dependencies
+        self.signature
+            .track_unique_dependencies
             .associate::<T>(&self.track_current_plugin, dependency_reason);
 
         self
@@ -306,22 +370,7 @@ impl<'a> AppBuilder<'a> {
             track_added_plugins: Default::default(),
             track_current_plugin: Default::default(),
             track_type_names: Default::default(),
-            track_plugin_dependencies: PluginsAssociatedMap::new(
-                "Plugin depends on Plugin",
-                &app.type_names,
-            ),
-            track_uniques_provided: PluginsAssociatedMap::new(
-                "Plugin provides Unique",
-                &app.type_names,
-            ),
-            track_unique_dependencies: PluginsAssociatedMap::new(
-                "Plugin depends on Unique",
-                &app.type_names,
-            ),
-            track_update_packed: PluginsAssociatedMap::new(
-                "Plugin requires update_pack",
-                &app.type_names,
-            ),
+            signature: WorkloadSignature::new(&app.type_names),
         }
     }
 
