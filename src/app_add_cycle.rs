@@ -44,13 +44,23 @@ impl App {
             // checks
             for ((up_type, _), assoc) in signature.track_update_packed.entries() {
                 if !assoc.is_empty() {
-                    cumulative_update_packed.associate(
-                        up_type.clone(),
-                        CyclePluginAssociations {
-                            plugins: assoc,
-                            workload: name.clone(),
-                        },
-                    );
+                    // can happen if a cycle has the same workload multiple times
+                    let added_already = cumulative_update_packed
+                        .get_plugins(&up_type)
+                        .1
+                        .iter()
+                        .find(|a| a.workload == name)
+                        .is_some();
+                    // so, we don't want to add duplicate associations for them
+                    if !added_already {
+                        cumulative_update_packed.associate(
+                            up_type.clone(),
+                            CyclePluginAssociations {
+                                plugins: assoc,
+                                workload: name.clone(),
+                            },
+                        );
+                    }
                 }
             }
 
