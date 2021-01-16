@@ -10,7 +10,7 @@ pub struct CyclePluginAssociations {
 
 #[derive(Debug)]
 pub enum CycleCheckError {
-    UpdatePackDeclaredInMultipleWorkloads {
+    UpdatePackResetInMultipleWorkloads {
         update_pack: &'static str,
         conflicts: Vec<CyclePluginAssociations>,
     },
@@ -27,7 +27,7 @@ impl App {
     ) -> Result<AppWorkload, Vec<CycleCheckError>> {
         let mut names_checked = Vec::new();
         let mut cumulative_update_packed = TypeIdBuckets::<CyclePluginAssociations>::new(
-            "update packed in previous workloads",
+            "update packed in workloads",
             &self.type_names,
         );
 
@@ -69,12 +69,11 @@ impl App {
 
         let mut errs = Vec::<CycleCheckError>::new();
 
-        // if all goes well, add to cumulatives
         for ((_, update_pack_storage_name), workloads_dependent) in
             cumulative_update_packed.entries()
         {
             if workloads_dependent.len() > 1 {
-                errs.push(CycleCheckError::UpdatePackDeclaredInMultipleWorkloads {
+                errs.push(CycleCheckError::UpdatePackResetInMultipleWorkloads {
                     update_pack: update_pack_storage_name,
                     conflicts: workloads_dependent,
                 })
@@ -135,12 +134,11 @@ mod update_pack_tests {
             errors
         );
         let one_err = errors.first().unwrap();
-        if let CycleCheckError::UpdatePackDeclaredInMultipleWorkloads { update_pack, .. } = one_err
-        {
+        if let CycleCheckError::UpdatePackResetInMultipleWorkloads { update_pack, .. } = one_err {
             assert_eq!(*update_pack, type_name::<A>());
         } else {
             panic!(
-                "Expected error to be UpdatePackDeclaredInMultipleWorkloads, but found {:#?}",
+                "Expected error to be UpdatePackResetInMultipleWorkloads, but found {:#?}",
                 one_err
             );
         }
