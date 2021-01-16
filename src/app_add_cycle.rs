@@ -1,4 +1,20 @@
-use crate::{App, AppWorkload, AppWorkloadInfo, PluginsAssociatedMap};
+use std::borrow::Cow;
+
+use crate::{App, AppWorkload, AppWorkloadInfo, PluginAssociated, TypeIdBuckets};
+
+#[derive(Clone, Debug)]
+pub struct CyclePluginAssociations {
+    workload: Cow<'static, str>,
+    plugins: Vec<PluginAssociated>,
+}
+
+#[derive(Debug)]
+pub enum CycleCheckError {
+    UpdatePackDeclaredInMultipleWorkloads {
+        update_pack: &'static str,
+        conflicts: Vec<CyclePluginAssociations>,
+    },
+}
 
 impl App {
     /// Check the ordering of these workloads to check for conflicts.
@@ -8,10 +24,12 @@ impl App {
     pub fn add_cycle(
         &mut self,
         cycle: Vec<(AppWorkload, AppWorkloadInfo)>,
-    ) -> Result<AppWorkload, String> {
+    ) -> Result<AppWorkload, Vec<CycleCheckError>> {
         let mut names_checked = Vec::new();
-        let mut cumulative_update_packed =
-            PluginsAssociatedMap::new("update packed in previous workloads", &self.type_names);
+        let mut cumulative_update_packed = TypeIdBuckets::<CyclePluginAssociations>::new(
+            "update packed in previous workloads",
+            &self.type_names,
+        );
 
         for (
             _workloads,
@@ -23,28 +41,38 @@ impl App {
             },
         ) in cycle
         {
-            let mut errs = Vec::new();
             // checks
-            for ((up_type, up_type_name), assoc) in signature.track_update_packed.entries() {
+            for ((up_type, _), assoc) in signature.track_update_packed.entries() {
                 if !assoc.is_empty() {
-                    let (_, plugins_already_claim_update_pack) =
-                        cumulative_update_packed.get_plugins(&up_type);
-                    if !plugins_already_claim_update_pack.is_empty() {
-                        errs.push(format!("Plugin ({:?}) may not claim update pack of ({}) as it is claimed in an earlier workload's plugins ({:?}).", &name, &up_type_name, &plugins_already_claim_update_pack));
-                    } else {
-                        cumulative_update_packed.associate_all(&up_type, assoc);
-                    }
+                    cumulative_update_packed.associate(
+                        up_type.clone(),
+                        CyclePluginAssociations {
+                            plugins: assoc,
+                            workload: name.clone(),
+                        },
+                    );
                 }
-            }
-            // if all goes well, add to cumulatives
-            if !errs.is_empty() {
-                return Err(format!(
-                    "Cycle check found errors in workload:\n * {}",
-                    errs.join("\n * ")
-                ));
             }
 
             names_checked.push(name);
+        }
+
+        let mut errs = Vec::<CycleCheckError>::new();
+
+        // if all goes well, add to cumulatives
+        for ((_, update_pack_storage_name), workloads_dependent) in
+            cumulative_update_packed.entries()
+        {
+            if workloads_dependent.len() > 1 {
+                errs.push(CycleCheckError::UpdatePackDeclaredInMultipleWorkloads {
+                    update_pack: update_pack_storage_name,
+                    conflicts: workloads_dependent,
+                })
+            }
+        }
+
+        if !errs.is_empty() {
+            return Err(errs);
         }
 
         Ok(AppWorkload {
@@ -55,6 +83,8 @@ impl App {
 
 #[cfg(test)]
 mod update_pack_tests {
+    use std::any::type_name;
+
     use super::*;
 
     struct A;
@@ -86,12 +116,24 @@ mod update_pack_tests {
         let result = app.add_cycle(vec![rx_a1, rx_a2]);
 
         // Then observe an error
-        let error_message = result.expect_err("expected conflict");
-        assert!(
-            error_message.contains("may not claim update pack"),
-            "{}",
-            error_message
+        let errors = result.expect_err("expected conflict");
+
+        assert_eq!(
+            errors.len(),
+            1,
+            "Expected 1 error, but found: {:#?}",
+            errors
         );
+        let one_err = errors.first().unwrap();
+        if let CycleCheckError::UpdatePackDeclaredInMultipleWorkloads { update_pack, .. } = one_err
+        {
+            assert_eq!(*update_pack, type_name::<A>());
+        } else {
+            panic!(
+                "Expected error to be UpdatePackDeclaredInMultipleWorkloads, but found {:#?}",
+                one_err
+            );
+        }
     }
 
     impl crate::Plugin for RxA1 {

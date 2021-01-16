@@ -1,7 +1,7 @@
 use std::any::{type_name, TypeId};
 
 #[derive(Clone, Default)]
-pub(crate) struct PluginId(Vec<(TypeId, &'static str)>);
+pub struct PluginId(Vec<(TypeId, &'static str)>);
 impl PluginId {
     pub(crate) fn contains(&self, type_id: TypeId) -> bool {
         self.0

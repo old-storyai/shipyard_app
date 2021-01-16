@@ -16,18 +16,20 @@ use plugin_id::PluginId;
 pub const DEFAULT_STAGE: &str = "default";
 
 #[derive(Clone, Debug)]
-pub(crate) struct PluginAssociated {
-    pub(crate) plugin: PluginId,
-    pub(crate) reason: &'static str,
+pub struct PluginAssociated {
+    pub plugin: PluginId,
+    pub reason: &'static str,
 }
 
-pub(crate) struct PluginsAssociatedMap {
+pub(crate) type PluginsAssociatedMap = TypeIdBuckets<PluginAssociated>;
+
+pub(crate) struct TypeIdBuckets<T> {
     pub(crate) name: &'static str,
     pub(crate) track_type_names: TypeNames,
-    pub(crate) type_plugins_lookup: HashMap<TypeId, Vec<PluginAssociated>>,
+    pub(crate) type_plugins_lookup: HashMap<TypeId, Vec<T>>,
 }
 
-impl std::fmt::Debug for PluginsAssociatedMap {
+impl<T: std::fmt::Debug + Clone> std::fmt::Debug for TypeIdBuckets<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
             .entry(&"association", &self.name)
@@ -53,34 +55,31 @@ impl AssociateResult {
     }
 }
 
-impl PluginsAssociatedMap {
+impl<T> TypeIdBuckets<T> {
     pub(crate) fn new(name: &'static str, track_type_names: &TypeNames) -> Self {
-        PluginsAssociatedMap {
+        TypeIdBuckets {
             name,
             track_type_names: track_type_names.clone(),
             type_plugins_lookup: Default::default(),
         }
     }
+}
 
-    pub(crate) fn entries(&self) -> Vec<((TypeId, &'static str), Vec<PluginAssociated>)> {
+impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
+    pub(crate) fn entries(&self) -> Vec<((TypeId, &'static str), Vec<T>)> {
         self.type_plugins_lookup
             .iter()
-            .map(
-                |(id, associations)| -> ((TypeId, &'static str), Vec<PluginAssociated>) {
-                    let name = self
-                        .track_type_names
-                        .lookup_name(&id)
-                        .expect("all type ids with associations have a name saved");
-                    (
-                        (*id, name),
-                        associations.iter().map(Clone::clone).collect(),
-                    )
-                },
-            )
+            .map(|(id, associations)| -> ((TypeId, &'static str), Vec<T>) {
+                let name = self
+                    .track_type_names
+                    .lookup_name(&id)
+                    .expect("all type ids with associations have a name saved");
+                ((*id, name), associations.iter().map(Clone::clone).collect())
+            })
             .collect()
     }
 
-    pub(crate) fn get_plugins(&self, type_id: &TypeId) -> (&'static str, Vec<PluginAssociated>) {
+    pub(crate) fn get_plugins(&self, type_id: &TypeId) -> (&'static str, Vec<T>) {
         (
             self.track_type_names
                 .lookup_name(type_id)
@@ -90,41 +89,55 @@ impl PluginsAssociatedMap {
                 .map_or(Vec::new(), |val| val.to_vec()),
         )
     }
-    pub(crate) fn associate_all(&mut self, type_id: &TypeId, all: Vec<PluginAssociated>) {
+    pub(crate) fn associate_all(&mut self, type_id: &TypeId, all: Vec<T>) {
         for assoc in all {
-            self._associate(*type_id, assoc);
+            self.associate(*type_id, assoc);
         }
     }
 
-    /// Return new number of plugins associated
-    pub(crate) fn associate<T: 'static>(
-        &mut self,
-        plugin: &PluginId,
-        reason: &'static str,
-    ) -> AssociateResult {
-        let type_id = self.track_type_names.tracked_type_id_of::<T>();
-        let assoc = PluginAssociated {
-            plugin: plugin.clone(),
-            reason,
-        };
-        self._associate(type_id, assoc)
-    }
-
-    fn _associate(&mut self, type_id: TypeId, assoc: PluginAssociated) -> AssociateResult {
+    pub(crate) fn associate(&mut self, type_id: TypeId, assoc: T) -> AssociateResult {
         let type_name = self.track_type_names.lookup_name(&type_id).unwrap();
         match self.type_plugins_lookup.entry(type_id) {
             Entry::Occupied(mut list) => {
-                trace!(plugin = ?assoc.plugin, with = type_name, reason = ?assoc.reason, result = "existed", "Associated {}", self.name);
+                trace!(
+                    ?assoc,
+                    with = type_name,
+                    result = "existed",
+                    "Associated {}",
+                    self.name
+                );
                 // no need to pack again
                 list.get_mut().push(assoc);
                 AssociateResult::Nth(list.get().len())
             }
             Entry::Vacant(list) => {
-                trace!(plugin = ?assoc.plugin, with = type_name, reason = ?assoc.reason, result = "added", "Associated {}", self.name);
+                trace!(
+                    ?assoc,
+                    with = type_name,
+                    result = "added",
+                    "Associated {}",
+                    self.name
+                );
                 list.insert(vec![assoc]);
                 AssociateResult::First
             }
         }
+    }
+}
+
+impl TypeIdBuckets<PluginAssociated> {
+    /// Return new number of plugins associated
+    pub(crate) fn associate_plugin<Type: 'static>(
+        &mut self,
+        plugin: &PluginId,
+        reason: &'static str,
+    ) -> AssociateResult {
+        let type_id = self.track_type_names.tracked_type_id_of::<Type>();
+        let assoc = PluginAssociated {
+            plugin: plugin.clone(),
+            reason,
+        };
+        self.associate(type_id, assoc)
     }
 }
 
@@ -296,7 +309,7 @@ impl<'a> AppBuilder<'a> {
         if self
             .signature
             .track_update_packed
-            .associate::<T>(&self.track_current_plugin, reason)
+            .associate_plugin::<T>(&self.track_current_plugin, reason)
             .is_first()
         {
             self.app.world.borrow::<ViewMut<T>>().unwrap().update_pack();
@@ -315,7 +328,7 @@ impl<'a> AppBuilder<'a> {
         if self
             .signature
             .track_uniques_provided
-            .associate::<T>(&self.track_current_plugin, "<not provided>")
+            .associate_plugin::<T>(&self.track_current_plugin, "<not provided>")
             .is_first()
         {
             self.app.world.add_unique(component).unwrap();
@@ -339,7 +352,7 @@ impl<'a> AppBuilder<'a> {
     {
         self.signature
             .track_unique_dependencies
-            .associate::<T>(&self.track_current_plugin, dependency_reason);
+            .associate_plugin::<T>(&self.track_current_plugin, dependency_reason);
 
         self
     }
