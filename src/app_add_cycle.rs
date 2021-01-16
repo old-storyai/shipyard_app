@@ -25,12 +25,12 @@ impl App {
         {
             let mut errs = Vec::new();
             // checks
-            for ((up_type, _up_type_name), assoc) in signature.track_update_packed.entries() {
+            for ((up_type, up_type_name), assoc) in signature.track_update_packed.entries() {
                 if !assoc.is_empty() {
                     let (_, plugins_already_claim_update_pack) =
                         cumulative_update_packed.get_plugins(&up_type);
                     if !plugins_already_claim_update_pack.is_empty() {
-                        errs.push(format!("Plugin ({:?}) may not claim update pack as it is claimed in an earlier workload's plugins ({:?}).", &name, &plugins_already_claim_update_pack));
+                        errs.push(format!("Plugin ({:?}) may not claim update pack of ({}) as it is claimed in an earlier workload's plugins ({:?}).", &name, &up_type_name, &plugins_already_claim_update_pack));
                     } else {
                         cumulative_update_packed.associate_all(&up_type, assoc);
                     }
