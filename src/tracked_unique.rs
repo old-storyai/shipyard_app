@@ -12,28 +12,36 @@ pub struct TrackedMut<'a, T: 'static>(UniqueViewMut<'a, TrackedValue<T>>);
 pub struct Tracked<'a, T: 'static>(UniqueView<'a, TrackedValue<T>>);
 
 impl<'a, T: 'static + Send + Sync> Borrow<'a> for Tracked<'a, T> {
-    fn try_borrow(world: &'a World) -> Result<Self, error::GetStorage>
+    fn borrow(
+        all_storages: &'a AllStorages,
+        all_borrow: Option<SharedBorrow<'a>>,
+    ) -> Result<Self, error::GetStorage>
     where
         Self: Sized,
     {
-        Ok(Tracked(world.borrow::<UniqueView<'a, TrackedValue<T>>>()?))
+        Ok(Tracked(Borrow::borrow(all_storages, all_borrow)?))
     }
+}
 
+unsafe impl<'a, T: 'static + Send + Sync> BorrowInfo for Tracked<'a, T> {
     fn borrow_info(mut info: &mut Vec<info::TypeInfo>) {
         UniqueView::<'a, T>::borrow_info(&mut info);
     }
 }
 
 impl<'a, T: 'static + Send + Sync> Borrow<'a> for TrackedMut<'a, T> {
-    fn try_borrow(world: &'a World) -> Result<Self, error::GetStorage>
+    fn borrow(
+        all_storages: &'a AllStorages,
+        all_borrow: Option<SharedBorrow<'a>>,
+    ) -> Result<Self, error::GetStorage>
     where
         Self: Sized,
     {
-        Ok(TrackedMut(
-            world.borrow::<UniqueViewMut<'a, TrackedValue<T>>>()?,
-        ))
+        Ok(TrackedMut(Borrow::borrow(all_storages, all_borrow)?))
     }
+}
 
+unsafe impl<'a, T: 'static + Send + Sync> BorrowInfo for TrackedMut<'a, T> {
     fn borrow_info(mut info: &mut Vec<info::TypeInfo>) {
         UniqueViewMut::<'a, T>::borrow_info(&mut info);
     }
