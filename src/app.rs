@@ -1,6 +1,9 @@
-use std::any::type_name;
+use std::any::{type_name, TypeId};
 
-use crate::{app_builder::AppBuilder, type_names::TypeNames, AppWorkload, AppWorkloadInfo, Plugin};
+use crate::{
+    app_builder::AppBuilder, type_names::TypeNames, AppWorkload, AppWorkloadInfo, Plugin,
+    TypeIdBuckets,
+};
 use shipyard::*;
 use tracing::trace_span;
 
@@ -9,6 +12,7 @@ use tracing::trace_span;
 pub struct App {
     pub world: World,
     pub(crate) type_names: TypeNames,
+    workload_ids: TypeIdBuckets<()>,
 }
 
 impl App {
@@ -17,14 +21,16 @@ impl App {
         App::new_with_world(World::new())
     }
     pub fn new_with_world(world: World) -> App {
+        let type_names = TypeNames::default();
         App {
             world,
-            type_names: TypeNames::default(),
+            workload_ids: TypeIdBuckets::new("Count times workload plugin added", &type_names),
+            type_names,
         }
     }
 
     #[track_caller]
-    pub fn add_plugin_workload<P>(&self, plugin: P) -> AppWorkload
+    pub fn add_plugin_workload<P>(&mut self, plugin: P) -> AppWorkload
     where
         P: Plugin + 'static,
     {
@@ -32,16 +38,21 @@ impl App {
     }
 
     #[track_caller]
-    pub fn add_plugin_workload_with_info<P>(&self, plugin: P) -> (AppWorkload, AppWorkloadInfo)
+    pub fn add_plugin_workload_with_info<P>(&mut self, plugin: P) -> (AppWorkload, AppWorkloadInfo)
     where
         P: Plugin + 'static,
     {
-        let span = trace_span!("add_plugin_workload_with_info", plugin = ?type_name::<P>());
+        let workload_name = type_name::<P>();
+        let workload_type_id = TypeId::of::<P>();
+        let span = trace_span!("add_plugin_workload_with_info", plugin = ?workload_name);
         let _span = span.enter();
+        let name: std::borrow::Cow<'static, str> = match self.workload_ids.associate_type::<P>(()) {
+            crate::AssociateResult::First => workload_name.into(),
+            crate::AssociateResult::Nth(n) => format!("{}_{}", workload_name, n).into(),
+        };
         let mut builder = AppBuilder::new(&self);
         plugin.build(&mut builder);
-        let workload_name = type_name::<P>();
-        builder.finish_with_info_named(workload_name.into())
+        builder.finish_with_info_named(name, Some(workload_type_id))
     }
 
     /// Runs default workload

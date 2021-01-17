@@ -1,4 +1,4 @@
-use crate::{app::App, plugin::Plugin, type_names::TypeNames};
+use crate::{TrackedValue, app::App, plugin::Plugin, tracked_unique::reset_tracked_unique, type_names::TypeNames};
 use shipyard::*;
 use std::{
     any::{type_name, TypeId},
@@ -41,6 +41,7 @@ impl<T: std::fmt::Debug + Clone> std::fmt::Debug for TypeIdBuckets<T> {
             .finish()
     }
 }
+
 pub enum AssociateResult {
     First,
     Nth(usize),
@@ -88,6 +89,10 @@ impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
                 .get(&type_id)
                 .map_or(Vec::new(), |val| val.to_vec()),
         )
+    }
+
+    pub(crate) fn associate_type<U: 'static>(&mut self, assoc: T) -> AssociateResult {
+        self.associate(self.track_type_names.tracked_type_id_of::<U>(), assoc)
     }
 
     pub(crate) fn associate(&mut self, type_id: TypeId, assoc: T) -> AssociateResult {
@@ -142,10 +147,13 @@ pub(crate) struct WorkloadSignature {
     pub track_plugin_dependencies: PluginsAssociatedMap,
     /// unique type id to list of plugin type ids that provided a value for it it
     pub track_uniques_provided: PluginsAssociatedMap,
+    pub track_tracked_uniques_provided: PluginsAssociatedMap,
     /// unique type id to list of (plugin type id, reason string)
     pub track_unique_dependencies: PluginsAssociatedMap,
     /// update component storage type id to list of (plugin type id, reason string)
     pub track_update_packed: PluginsAssociatedMap,
+    /// tracked uniques storage type id to list of (plugin type id, reason string)
+    pub track_tracked_uniques: PluginsAssociatedMap,
 }
 
 impl WorkloadSignature {
@@ -159,12 +167,20 @@ impl WorkloadSignature {
                 "Plugin provides Unique",
                 &type_names,
             ),
+            track_tracked_uniques_provided: PluginsAssociatedMap::new(
+                "Plugin provides Tracked unique",
+                &type_names,
+            ),
             track_unique_dependencies: PluginsAssociatedMap::new(
                 "Plugin depends on Unique",
                 &type_names,
             ),
             track_update_packed: PluginsAssociatedMap::new(
                 "Plugin requires update_pack",
+                &type_names,
+            ),
+            track_tracked_uniques: PluginsAssociatedMap::new(
+                "Plugin requires tracked unique",
                 &type_names,
             ),
         }
@@ -203,6 +219,9 @@ pub struct AppWorkloadInfo {
     pub(crate) batch_info: Vec<info::BatchInfo>,
     /// Self-imposed constraints declared by the workload
     pub(crate) signature: Rc<WorkloadSignature>,
+    /// Derived from this plugin
+    pub(crate) plugin_id: Option<TypeId>,
+    /// Workload name assigned in the world
     pub name: Cow<'static, str>,
 }
 
@@ -246,7 +265,7 @@ impl<'a> AppBuilder<'a> {
     /// Finish [App] and report back each of the update stages with their [AppWorkloadInfo].
     #[track_caller]
     pub fn finish_with_info(self) -> (AppWorkload, AppWorkloadInfo) {
-        self.finish_with_info_named("update".into())
+        self.finish_with_info_named("update".into(), None)
     }
 
     /// Finish [App] and report back each of the update stages with their [AppWorkloadInfo].
@@ -255,6 +274,7 @@ impl<'a> AppBuilder<'a> {
     pub(crate) fn finish_with_info_named(
         self,
         update_stage: std::borrow::Cow<'static, str>,
+        plugin_id: Option<TypeId>,
     ) -> (AppWorkload, AppWorkloadInfo) {
         let AppBuilder {
             app,
@@ -287,6 +307,7 @@ impl<'a> AppBuilder<'a> {
             AppWorkloadInfo {
                 batch_info: info.batch_info,
                 type_names: Blind(app.type_names.clone()),
+                plugin_id,
                 name: info.name,
                 signature: Rc::new(signature),
             },
@@ -314,6 +335,21 @@ impl<'a> AppBuilder<'a> {
         self
     }
 
+    /// Declare dependency on `[crate::Tracked]<T>` and add "reset tracked" as the last system.
+    #[track_caller]
+    pub fn tracks<T: 'static + Send + Sync>(&mut self, reason: &'static str) -> &mut Self {
+        if self
+            .signature
+            .track_tracked_uniques
+            .associate_plugin::<T>(&self.track_current_plugin, reason)
+            .is_first()
+        {
+            self.resets.push(system!(reset_tracked_unique::<T>));
+        }
+
+        self
+    }
+
     /// Add a unique component
     #[track_caller]
     pub fn add_unique<T>(&mut self, component: T) -> &mut Self
@@ -330,6 +366,34 @@ impl<'a> AppBuilder<'a> {
         } else {
             warn!(
                 "Unique({}) already provided by another plugin in the plugin workload.",
+                type_name::<T>(),
+            )
+        }
+
+        self
+    }
+
+    /// Add a tracked unique value.
+    ///
+    /// Accessible through the [crate::Tracked] and [crate::TrackedMut] views.
+    #[track_caller]
+    pub fn add_tracked_value<T>(&mut self, component: T) -> &mut Self
+    where
+        T: Send + Sync + 'static,
+    {
+        if self
+            .signature
+            .track_tracked_uniques_provided
+            .associate_plugin::<T>(&self.track_current_plugin, "<not provided>")
+            .is_first()
+        {
+            self.app
+                .world
+                .add_unique(TrackedValue::new(component))
+                .unwrap();
+        } else {
+            warn!(
+                "Tracked unique({}) already provided by another plugin in the plugin workload.",
                 type_name::<T>(),
             )
         }
