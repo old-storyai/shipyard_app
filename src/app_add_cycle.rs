@@ -68,7 +68,7 @@ impl App {
                     // so, we don't want to add duplicate associations for them
                     continue 'each_workload;
                 } else {
-                    plugins_added.insert(p.clone());
+                    plugins_added.insert(*p);
                 }
             }
 
@@ -76,10 +76,10 @@ impl App {
             for ((up_type, _), assoc) in signature.track_update_packed.entries() {
                 if !assoc.is_empty() {
                     cumulative_update_packed.associate(
-                        up_type.clone(),
+                        up_type,
                         CyclePluginAssociations {
                             plugins: assoc,
-                            plugin_id: plugin_id.clone(),
+                            plugin_id,
                             workload: name.clone(),
                         },
                     );
@@ -89,7 +89,7 @@ impl App {
             for ((tracked_type, _), assoc) in signature.track_tracked_uniques.entries() {
                 if !assoc.is_empty() {
                     cumulative_tracked_uniques.associate(
-                        tracked_type.clone(),
+                        tracked_type,
                         CyclePluginAssociations {
                             plugins: assoc,
                             workload: name.clone(),

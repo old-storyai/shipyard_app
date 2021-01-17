@@ -80,17 +80,6 @@ impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
             .collect()
     }
 
-    pub(crate) fn get_plugins(&self, type_id: &TypeId) -> (&'static str, Vec<T>) {
-        (
-            self.track_type_names
-                .lookup_name(type_id)
-                .expect("type_id has name"),
-            self.type_plugins_lookup
-                .get(&type_id)
-                .map_or(Vec::new(), |val| val.to_vec()),
-        )
-    }
-
     pub(crate) fn associate_type<U: 'static>(&mut self, assoc: T) -> AssociateResult {
         self.associate(self.track_type_names.tracked_type_id_of::<U>(), assoc)
     }
