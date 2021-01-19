@@ -15,8 +15,8 @@ use tracing::*;
 mod plugin_id;
 use plugin_id::PluginId;
 
-/// Name of app stage responsible for doing most app logic. Systems should be registered here by default.
-pub static DEFAULT_STAGE: &str = "default";
+/// Used when a workload is created without a plugin
+pub static DEFAULT_WORKLOAD_NAME: &str = "update";
 
 /// Used for defaultly created workloads
 pub struct DefaultWorkloadPlugin;
@@ -259,7 +259,7 @@ impl<'a> AppBuilder<'a> {
     #[track_caller]
     fn finish_with_info(self) -> (AppWorkload, AppWorkloadInfo) {
         self.finish_with_info_named(
-            "update".into(),
+            DEFAULT_WORKLOAD_NAME.into(),
             std::any::TypeId::of::<DefaultWorkloadPlugin>(),
         )
     }
