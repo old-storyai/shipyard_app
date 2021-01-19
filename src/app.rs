@@ -47,8 +47,8 @@ impl App {
         let span = trace_span!("add_plugin_workload_with_info", plugin = ?workload_name);
         let _span = span.enter();
         let name: std::borrow::Cow<'static, str> = match self.workload_ids.associate_type::<P>(()) {
-            crate::AssociateResult::First => workload_name.into(),
-            crate::AssociateResult::Nth(n) => format!("{}_{}", workload_name, n).into(),
+            crate::AssociateResult { nth } if nth == 1 => workload_name.into(),
+            crate::AssociateResult { nth } => format!("{}_{}", workload_name, nth).into(),
         };
         let mut builder = AppBuilder::new(&self);
         plugin.build(&mut builder);

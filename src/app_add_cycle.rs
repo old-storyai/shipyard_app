@@ -49,7 +49,7 @@ impl App {
             &self.type_names,
         );
 
-        'each_workload: for (
+        for (
             _workloads,
             AppWorkloadInfo {
                 name,
@@ -60,70 +60,85 @@ impl App {
             },
         ) in cycle
         {
-            names_checked.push(name.clone());
-
-            // can happen if a cycle has the same workload multiple times
-            if let Some(ref p) = plugin_id {
+            let is_unique_workload = if let Some(ref p) = plugin_id {
                 if plugins_added.contains(p) {
-                    // so, we don't want to add duplicate associations for them
-                    continue 'each_workload;
+                    // If a cycle has the same workload multiple times, we don't want to get a
+                    // tracking conflict requirement with itself.
+                    false
                 } else {
+                    // first seen plugin will be checked for tracking conflicts
                     plugins_added.insert(*p);
+                    true
+                }
+            } else {
+                // a non-plugin workload should always be checked for tracking conflicts
+                true
+            };
+
+            // We do not want to double count plugins so we can later check for conflicts
+            if is_unique_workload {
+                // account for update packs
+                for ((up_type, _), assoc) in signature.track_update_packed.entries() {
+                    if !assoc.is_empty() {
+                        // We need to account for these tracked_uniques
+                        cumulative_update_packed.associate(
+                            up_type,
+                            CyclePluginAssociations {
+                                plugins: assoc,
+                                plugin_id,
+                                workload: name.clone(),
+                            },
+                        );
+                    }
+                }
+                // account for tracked uniques
+                for ((tracked_type, _), assoc) in signature.track_tracked_uniques.entries() {
+                    if !assoc.is_empty() {
+                        // We need to account for these tracked_uniques
+                        cumulative_tracked_uniques.associate(
+                            tracked_type,
+                            CyclePluginAssociations {
+                                plugins: assoc,
+                                workload: name.clone(),
+                                plugin_id: None,
+                            },
+                        );
+                    }
                 }
             }
 
-            // account for update packs
-            for ((up_type, _), assoc) in signature.track_update_packed.entries() {
-                if !assoc.is_empty() {
-                    cumulative_update_packed.associate(
-                        up_type,
-                        CyclePluginAssociations {
-                            plugins: assoc,
-                            plugin_id,
-                            workload: name.clone(),
-                        },
-                    );
-                }
-            }
-            // account for tracked uniques
-            for ((tracked_type, _), assoc) in signature.track_tracked_uniques.entries() {
-                if !assoc.is_empty() {
-                    cumulative_tracked_uniques.associate(
-                        tracked_type,
-                        CyclePluginAssociations {
-                            plugins: assoc,
-                            workload: name.clone(),
-                            plugin_id: None,
-                        },
-                    );
-                }
-            }
+            names_checked.push(name.clone());
         }
 
         let mut errs = Vec::<CycleCheckError>::new();
 
         // update pack
-        for ((_, update_pack_storage_name), workloads_dependent) in
-            cumulative_update_packed.entries()
-        {
-            if workloads_dependent.len() > 1 {
-                errs.push(CycleCheckError::UpdatePackResetInMultipleWorkloads {
-                    update_pack: update_pack_storage_name,
-                    conflicts: workloads_dependent,
-                })
-            }
-        }
+        errs.extend(
+            cumulative_update_packed
+                .entries()
+                .into_iter()
+                .filter(|((_, _), workloads_dependent)| workloads_dependent.len() > 1)
+                .map(|((_, update_pack_storage_name), workloads_dependent)| {
+                    CycleCheckError::UpdatePackResetInMultipleWorkloads {
+                        update_pack: update_pack_storage_name,
+                        conflicts: workloads_dependent,
+                    }
+                }),
+        );
+
         // tracked unique
-        for ((_, tracked_unique_storage_name), workloads_dependent) in
-            cumulative_tracked_uniques.entries()
-        {
-            if workloads_dependent.len() > 1 {
-                errs.push(CycleCheckError::TrackedUniqueResetInMultipleWorkloads {
-                    tracked_unique: tracked_unique_storage_name,
-                    conflicts: workloads_dependent,
-                })
-            }
-        }
+        errs.extend(
+            cumulative_tracked_uniques
+                .entries()
+                .into_iter()
+                .filter(|((_, _), workloads_dependent)| workloads_dependent.len() > 1)
+                .map(|((_, tracked_unique_storage_name), workloads_dependent)| {
+                    CycleCheckError::TrackedUniqueResetInMultipleWorkloads {
+                        tracked_unique: tracked_unique_storage_name,
+                        conflicts: workloads_dependent,
+                    }
+                }),
+        );
 
         if !errs.is_empty() {
             return Err(errs);
@@ -208,7 +223,7 @@ mod update_pack_tests {
         let result = app.add_cycle(vec![rx_a_1, rx_a_2]);
 
         // Then observe ok
-        let errors = result.expect("expected no conflict");
+        result.expect("expected no conflict");
     }
 
     #[test]
@@ -258,24 +273,24 @@ mod update_pack_tests {
         let result = app.add_cycle(vec![rx_a_1, rx_a_2]);
 
         // Then observe ok
-        let errors = result.expect("expected no conflict");
+        result.expect("expected no conflict");
     }
 
     impl crate::Plugin for RxA1 {
         fn build(&self, app: &mut crate::AppBuilder) {
-            app.update_pack::<A>("Rx1");
+            app.update_pack::<A>("RxA1");
         }
     }
 
     impl crate::Plugin for RxA2 {
         fn build(&self, app: &mut crate::AppBuilder) {
-            app.update_pack::<A>("Rx2");
+            app.update_pack::<A>("RxA2");
         }
     }
 
     impl crate::Plugin for RxADup {
         fn build(&self, app: &mut crate::AppBuilder) {
-            app.update_pack::<A>("RxDup");
+            app.update_pack::<A>("RxADup");
         }
         fn can_add_multiple_times(&self) -> bool {
             true
@@ -283,23 +298,23 @@ mod update_pack_tests {
     }
 
     impl crate::Plugin for OtherPlugin {
-        fn build(&self, app: &mut crate::AppBuilder) {}
+        fn build(&self, _: &mut crate::AppBuilder) {}
     }
 
     impl crate::Plugin for RxTrackA1 {
         fn build(&self, app: &mut crate::AppBuilder) {
-            app.tracks::<A>("RxTrack1");
+            app.tracks::<A>("RxTrackA1");
         }
     }
 
     impl crate::Plugin for RxTrackA2 {
         fn build(&self, app: &mut crate::AppBuilder) {
-            app.tracks::<A>("RxTrack2");
+            app.tracks::<A>("RxTrackA2");
         }
     }
     impl crate::Plugin for RxTrackADup {
         fn build(&self, app: &mut crate::AppBuilder) {
-            app.tracks::<A>("RxTrackDup");
+            app.tracks::<A>("RxTrackADup");
         }
         fn can_add_multiple_times(&self) -> bool {
             true

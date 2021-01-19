@@ -18,9 +18,7 @@ pub struct TreePlugin;
 impl Plugin for TreePlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.update_pack::<ChildOf>("update in response to ChildOf changes");
-
-        app.add_system(system!(indexing::tree_indexing))
-            .add_system(system!(indexing::tree_indexing));
+        app.add_system(system!(indexing::tree_indexing));
     }
 }
 ```
