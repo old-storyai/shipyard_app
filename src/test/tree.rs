@@ -33,9 +33,8 @@ pub struct TreePlugin;
 impl Plugin for TreePlugin {
     fn build(&self, app: &mut AppBuilder) {
         // needs direct update pack since TreePlugin clears updates on its own.
-        app.update_pack::<ChildOf>("update in response to ChildOf changes");
-
-        app.add_system(system!(indexing::tree_indexing));
+        app.update_pack::<ChildOf>("update in response to ChildOf changes")
+            .add_system(system!(indexing::tree_indexing));
     }
 }
 
@@ -336,10 +335,12 @@ mod tests {
         world.run_default().unwrap();
 
         // Delete the first and last siblings
-        world.run(|mut vm_child_of: ViewMut<ChildOf>| {
-            vm_child_of.delete(a1);
-            vm_child_of.delete(a3);
-        }).unwrap();
+        world
+            .run(|mut vm_child_of: ViewMut<ChildOf>| {
+                vm_child_of.delete(a1);
+                vm_child_of.delete(a3);
+            })
+            .unwrap();
 
         // Run the indexing workload
         world.run_default().unwrap();

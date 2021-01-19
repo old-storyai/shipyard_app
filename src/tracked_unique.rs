@@ -146,7 +146,7 @@ impl<T: Clone + Send + Sync + 'static> Plugin for TrackedUniquePlugin<T> {
 }
 
 pub(crate) fn reset_tracked_unique<T>(mut uvm_tracked_unique_t: UniqueViewMut<TrackedValue<T>>) {
-    let span = trace_span!("clear_tracked_unique", tracked = ?type_name::<T>());
+    let span = trace_span!("reset_tracked_unique", tracked = ?type_name::<T>());
     let _span = span.enter();
     uvm_tracked_unique_t.reset_tracking();
 }

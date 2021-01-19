@@ -1,4 +1,7 @@
-use crate::{TrackedValue, app::App, plugin::Plugin, tracked_unique::reset_tracked_unique, type_names::TypeNames};
+use crate::{
+    app::App, plugin::Plugin, tracked_unique::reset_tracked_unique, type_names::TypeNames,
+    TrackedValue,
+};
 use shipyard::*;
 use std::{
     any::{type_name, TypeId},
@@ -13,7 +16,7 @@ mod plugin_id;
 use plugin_id::PluginId;
 
 /// Name of app stage responsible for doing most app logic. Systems should be registered here by default.
-pub const DEFAULT_STAGE: &str = "default";
+pub static DEFAULT_STAGE: &str = "default";
 
 #[derive(Clone, Debug)]
 pub struct PluginAssociated {
@@ -42,17 +45,13 @@ impl<T: std::fmt::Debug + Clone> std::fmt::Debug for TypeIdBuckets<T> {
     }
 }
 
-pub enum AssociateResult {
-    First,
-    Nth(usize),
+pub struct AssociateResult {
+    pub(crate) nth: usize,
 }
 
 impl AssociateResult {
     fn is_first(&self) -> bool {
-        match self {
-            AssociateResult::First => true,
-            AssociateResult::Nth(_) => false,
-        }
+        self.nth == 1
     }
 }
 
@@ -75,7 +74,7 @@ impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
                     .track_type_names
                     .lookup_name(&id)
                     .expect("all type ids with associations have a name saved");
-                ((*id, name), associations.iter().map(Clone::clone).collect())
+                ((*id, name), associations.to_vec())
             })
             .collect()
     }
@@ -97,7 +96,9 @@ impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
                 );
                 // no need to pack again
                 list.get_mut().push(assoc);
-                AssociateResult::Nth(list.get().len())
+                AssociateResult {
+                    nth: list.get().len(),
+                }
             }
             Entry::Vacant(list) => {
                 trace!(
@@ -108,7 +109,7 @@ impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
                     self.name
                 );
                 list.insert(vec![assoc]);
-                AssociateResult::First
+                AssociateResult { nth: 1 }
             }
         }
     }

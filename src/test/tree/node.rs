@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use shipyard::EntityId;
 
 /// ChildOf is the source of truth when it comes to the structure of things in trees.
