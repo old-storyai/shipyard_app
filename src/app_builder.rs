@@ -18,6 +18,9 @@ use plugin_id::PluginId;
 /// Name of app stage responsible for doing most app logic. Systems should be registered here by default.
 pub static DEFAULT_STAGE: &str = "default";
 
+/// Used for defaultly created workloads
+pub struct DefaultWorkloadPlugin;
+
 #[derive(Clone, Debug)]
 pub struct PluginAssociated {
     pub plugin: PluginId,
@@ -210,7 +213,7 @@ pub struct AppWorkloadInfo {
     /// Self-imposed constraints declared by the workload
     pub(crate) signature: Rc<WorkloadSignature>,
     /// Derived from this plugin
-    pub(crate) plugin_id: Option<TypeId>,
+    pub(crate) plugin_id: TypeId,
     /// Workload name assigned in the world
     pub name: Cow<'static, str>,
 }
@@ -254,8 +257,11 @@ impl<'a> AppBuilder<'a> {
 
     /// Finish [App] and report back each of the update stages with their [AppWorkloadInfo].
     #[track_caller]
-    pub fn finish_with_info(self) -> (AppWorkload, AppWorkloadInfo) {
-        self.finish_with_info_named("update".into(), None)
+    fn finish_with_info(self) -> (AppWorkload, AppWorkloadInfo) {
+        self.finish_with_info_named(
+            "update".into(),
+            std::any::TypeId::of::<DefaultWorkloadPlugin>(),
+        )
     }
 
     /// Finish [App] and report back each of the update stages with their [AppWorkloadInfo].
@@ -264,7 +270,7 @@ impl<'a> AppBuilder<'a> {
     pub(crate) fn finish_with_info_named(
         self,
         update_stage: std::borrow::Cow<'static, str>,
-        plugin_id: Option<TypeId>,
+        plugin_id: TypeId,
     ) -> (AppWorkload, AppWorkloadInfo) {
         let AppBuilder {
             app,

@@ -52,7 +52,7 @@ impl App {
         };
         let mut builder = AppBuilder::new(&self);
         plugin.build(&mut builder);
-        builder.finish_with_info_named(name, Some(workload_type_id))
+        builder.finish_with_info_named(name, workload_type_id)
     }
 
     /// Runs default workload
