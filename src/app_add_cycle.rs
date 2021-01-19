@@ -3,13 +3,13 @@ use std::{any::TypeId, borrow::Cow, collections::HashSet};
 use crate::{App, AppWorkload, AppWorkloadInfo, PluginAssociated, TypeIdBuckets};
 
 /// Associations made by this workload which includes the list of plugins and their reasons associated.
-/// 
+///
 /// e.g. associated by requiring something to be update packed
 #[derive(Clone)]
 pub struct CycleWorkloadAssociations {
     workload: Cow<'static, str>,
     /// If this cycle workload is derived from a plugin, here's its [TypeId].
-    plugin_id: Option<TypeId>,
+    workload_plugin_id: TypeId,
     /// List of plugins & their reasons for being associated
     plugins: Vec<PluginAssociated>,
 }
@@ -43,7 +43,8 @@ impl App {
         &mut self,
         cycle: Vec<(AppWorkload, AppWorkloadInfo)>,
     ) -> Result<AppWorkload, Vec<CycleCheckError>> {
-        let mut plugins_added = HashSet::new();
+        // to track the plugins added so far (so we can avoid them accidentally conflicting with themselves)
+        let mut workload_plugins_added = HashSet::new();
         let mut names_checked = Vec::new();
         let mut cumulative_update_packed = TypeIdBuckets::<CycleWorkloadAssociations>::new(
             "update packed in workloads",
@@ -65,18 +66,13 @@ impl App {
             },
         ) in cycle
         {
-            let is_unique_workload = if let Some(ref p) = plugin_id {
-                if plugins_added.contains(p) {
-                    // If a cycle has the same workload multiple times, we don't want to get a
-                    // tracking conflict requirement with itself.
-                    false
-                } else {
-                    // first seen plugin will be checked for tracking conflicts
-                    plugins_added.insert(*p);
-                    true
-                }
+            let is_unique_workload = if workload_plugins_added.contains(&plugin_id) {
+                // If a cycle has the same workload multiple times, we don't want to get a
+                // tracking conflict requirement with itself.
+                false
             } else {
-                // a non-plugin workload should always be checked for tracking conflicts
+                // first seen plugin will be checked for tracking conflicts
+                workload_plugins_added.insert(plugin_id);
                 true
             };
 
@@ -90,7 +86,7 @@ impl App {
                             up_type,
                             CycleWorkloadAssociations {
                                 plugins: assoc,
-                                plugin_id,
+                                workload_plugin_id: plugin_id,
                                 workload: name.clone(),
                             },
                         );
@@ -105,7 +101,7 @@ impl App {
                             CycleWorkloadAssociations {
                                 plugins: assoc,
                                 workload: name.clone(),
-                                plugin_id: None,
+                                workload_plugin_id: plugin_id,
                             },
                         );
                     }
