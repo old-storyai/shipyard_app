@@ -2,14 +2,19 @@ use std::{any::TypeId, borrow::Cow, collections::HashSet};
 
 use crate::{App, AppWorkload, AppWorkloadInfo, PluginAssociated, TypeIdBuckets};
 
+/// Associations made by this workload which includes the list of plugins and their reasons associated.
+/// 
+/// e.g. associated by requiring something to be update packed
 #[derive(Clone)]
-pub struct CyclePluginAssociations {
+pub struct CycleWorkloadAssociations {
     workload: Cow<'static, str>,
+    /// If this cycle workload is derived from a plugin, here's its [TypeId].
     plugin_id: Option<TypeId>,
+    /// List of plugins & their reasons for being associated
     plugins: Vec<PluginAssociated>,
 }
 
-impl std::fmt::Debug for CyclePluginAssociations {
+impl std::fmt::Debug for CycleWorkloadAssociations {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct(&self.workload)
             .field("plugins", &self.plugins)
@@ -21,11 +26,11 @@ impl std::fmt::Debug for CyclePluginAssociations {
 pub enum CycleCheckError {
     UpdatePackResetInMultipleWorkloads {
         update_pack: &'static str,
-        conflicts: Vec<CyclePluginAssociations>,
+        conflicts: Vec<CycleWorkloadAssociations>,
     },
     TrackedUniqueResetInMultipleWorkloads {
         tracked_unique: &'static str,
-        conflicts: Vec<CyclePluginAssociations>,
+        conflicts: Vec<CycleWorkloadAssociations>,
     },
 }
 
@@ -40,11 +45,11 @@ impl App {
     ) -> Result<AppWorkload, Vec<CycleCheckError>> {
         let mut plugins_added = HashSet::new();
         let mut names_checked = Vec::new();
-        let mut cumulative_update_packed = TypeIdBuckets::<CyclePluginAssociations>::new(
+        let mut cumulative_update_packed = TypeIdBuckets::<CycleWorkloadAssociations>::new(
             "update packed in workloads",
             &self.type_names,
         );
-        let mut cumulative_tracked_uniques = TypeIdBuckets::<CyclePluginAssociations>::new(
+        let mut cumulative_tracked_uniques = TypeIdBuckets::<CycleWorkloadAssociations>::new(
             "tracked uniques in workloads",
             &self.type_names,
         );
@@ -83,7 +88,7 @@ impl App {
                         // We need to account for these tracked_uniques
                         cumulative_update_packed.associate(
                             up_type,
-                            CyclePluginAssociations {
+                            CycleWorkloadAssociations {
                                 plugins: assoc,
                                 plugin_id,
                                 workload: name.clone(),
@@ -97,7 +102,7 @@ impl App {
                         // We need to account for these tracked_uniques
                         cumulative_tracked_uniques.associate(
                             tracked_type,
-                            CyclePluginAssociations {
+                            CycleWorkloadAssociations {
                                 plugins: assoc,
                                 workload: name.clone(),
                                 plugin_id: None,
