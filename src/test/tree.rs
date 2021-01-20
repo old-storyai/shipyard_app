@@ -47,11 +47,7 @@ mod tests {
         // Create a new world
         let world = World::new();
         // Track modifications to the child_of components
-        world
-            .run(|mut vm_child_of: ViewMut<ChildOf>| {
-                vm_child_of.update_pack();
-            })
-            .unwrap();
+        world.borrow::<ViewMut<ChildOf>>().unwrap().update_pack();
 
         // Add the indexing workload
         let mut indexing = WorkloadBuilder::new("indexing");
@@ -70,11 +66,9 @@ mod tests {
 
     #[test]
     fn insert_single_entity_with_no_children() {
-        let world = setup_world_with_index_system();
+        let mut world = setup_world_with_index_system();
         // Add a parent and child entity
-        let a = world
-            .run(|mut entities: EntitiesViewMut| entities.add_entity((), ()))
-            .unwrap();
+        let a = world.add_entity(());
 
         // Run the indexing workload
         world.run_default().unwrap();
@@ -92,17 +86,10 @@ mod tests {
 
     #[test]
     fn insert_single_child() {
-        let world = setup_world_with_index_system();
+        let mut world = setup_world_with_index_system();
         // Add a parent and child entity
-        let (a, a1) = world
-            .run(
-                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                    let a = entities.add_entity((), ());
-                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                    (a, a1)
-                },
-            )
-            .unwrap();
+        let a = world.add_entity(());
+        let a1 = world.add_entity((ChildOf(a, Ordered::hinted(1)),));
 
         // Run the indexing workload
         world.run_default().unwrap();
@@ -138,20 +125,12 @@ mod tests {
 
     #[test]
     fn insert_many_siblings() {
-        let world = setup_world_with_index_system();
+        let mut world = setup_world_with_index_system();
         // Add a parent entity with many children
-        let (a, a1, a2, a3) = world
-            .run(
-                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                    let a = entities.add_entity((), ());
-                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(2)));
-                    let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(3)));
-
-                    (a, a1, a2, a3)
-                },
-            )
-            .unwrap();
+        let a = world.add_entity(());
+        let a1 = world.add_entity((ChildOf(a, Ordered::hinted(1)),));
+        let a2 = world.add_entity((ChildOf(a, Ordered::hinted(2)),));
+        let a3 = world.add_entity((ChildOf(a, Ordered::hinted(3)),));
 
         // Run the indexing workload
         world.run_default().unwrap();
@@ -201,19 +180,12 @@ mod tests {
 
     #[test]
     fn insert_deep_children() {
-        let world = setup_world_with_index_system();
-        let (a, a1, a2, a3) = world
-            .run(
-                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                    let a = entities.add_entity((), ());
-                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a1, Ordered::hinted(2)));
-                    let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a2, Ordered::hinted(3)));
+        let mut world = setup_world_with_index_system();
 
-                    (a, a1, a2, a3)
-                },
-            )
-            .unwrap();
+        let a = world.add_entity(());
+        let a1 = world.add_entity((ChildOf(a, Ordered::hinted(1)),));
+        let a2 = world.add_entity((ChildOf(a1, Ordered::hinted(2)),));
+        let a3 = world.add_entity((ChildOf(a2, Ordered::hinted(3)),));
 
         // Run the indexing workload
         world.run_default().unwrap();
@@ -255,17 +227,10 @@ mod tests {
     #[test]
     // TODO: Complete this test
     fn update_entity_as_child_of_self() {
-        let world = setup_world_with_index_system();
-        world
-            .run(
-                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                    let a = entities.add_entity((), ());
-                    entities.add_component(a, &mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
+        let mut world = setup_world_with_index_system();
 
-                    a
-                },
-            )
-            .unwrap();
+        let a = world.add_entity(());
+        world.add_component(a, (ChildOf(a, Ordered::hinted(1)),));
 
         // Run the indexing workload
         world.run_default().unwrap();
@@ -273,29 +238,16 @@ mod tests {
 
     #[test]
     fn delete_only_child() {
-        let world = setup_world_with_index_system();
+        let mut world = setup_world_with_index_system();
         // Add a parent and child entity
-        let (a, a1) = world
-            .run(
-                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                    let a = entities.add_entity((), ());
-                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-
-                    (a, a1)
-                },
-            )
-            .unwrap();
+        let a = world.add_entity(());
+        let a1 = world.add_entity((ChildOf(a, Ordered::hinted(1)),));
 
         // Run the indexing workload
         world.run_default().unwrap();
 
         // Delete the child entity
-        world
-            .run(|mut vm_child_of: ViewMut<ChildOf>| {
-                // remove should not be used as it is untracked for whatever reason...
-                vm_child_of.delete(a1);
-            })
-            .unwrap();
+        world.delete_component::<(ChildOf,)>(a1);
 
         // Run the indexing workload
         world.run_default().unwrap();
@@ -317,30 +269,19 @@ mod tests {
 
     #[test]
     fn delete_first_and_last_siblings() {
-        let world = setup_world_with_index_system();
-        let (a, a1, a2, a3) = world
-            .run(
-                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                    let a = entities.add_entity((), ());
-                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(2)));
-                    let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(3)));
+        let mut world = setup_world_with_index_system();
 
-                    (a, a1, a2, a3)
-                },
-            )
-            .unwrap();
+        let a = world.add_entity(());
+        let a1 = world.add_entity((ChildOf(a, Ordered::hinted(1)),));
+        let a2 = world.add_entity((ChildOf(a, Ordered::hinted(2)),));
+        let a3 = world.add_entity((ChildOf(a, Ordered::hinted(3)),));
 
         // Run the indexing workload
         world.run_default().unwrap();
 
         // Delete the first and last siblings
-        world
-            .run(|mut vm_child_of: ViewMut<ChildOf>| {
-                vm_child_of.delete(a1);
-                vm_child_of.delete(a3);
-            })
-            .unwrap();
+        world.delete_component::<(ChildOf,)>(a1);
+        world.delete_component::<(ChildOf,)>(a3);
 
         // Run the indexing workload
         world.run_default().unwrap();
@@ -367,29 +308,18 @@ mod tests {
 
     #[test]
     fn delete_middle_sibling() {
-        let world = setup_world_with_index_system();
-        let (a, a1, a2, a3) = world
-            .run(
-                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                    let a = entities.add_entity((), ());
-                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(2)));
-                    let a3 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(3)));
+        let mut world = setup_world_with_index_system();
 
-                    (a, a1, a2, a3)
-                },
-            )
-            .unwrap();
+        let a = world.add_entity(());
+        let a1 = world.add_entity((ChildOf(a, Ordered::hinted(1)),));
+        let a2 = world.add_entity((ChildOf(a, Ordered::hinted(2)),));
+        let a3 = world.add_entity((ChildOf(a, Ordered::hinted(3)),));
 
         // Run the indexing workload
         world.run_default().unwrap();
 
         // Delete the first and last siblings
-        world
-            .run(|mut vm_child_of: ViewMut<ChildOf>| {
-                vm_child_of.delete(a2);
-            })
-            .unwrap();
+        world.delete_component::<(ChildOf,)>(a2);
 
         // Run the indexing workload
         world.run_default().unwrap();
@@ -417,28 +347,17 @@ mod tests {
 
     #[test]
     fn delete_middle_ancestor() {
-        let world = setup_world_with_index_system();
-        let (a, a1, a2) = world
-            .run(
-                |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
-                    let a = entities.add_entity((), ());
-                    let a1 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(1)));
-                    let a2 = entities.add_entity(&mut vm_child_of, ChildOf(a1, Ordered::hinted(2)));
+        let mut world = setup_world_with_index_system();
 
-                    (a, a1, a2)
-                },
-            )
-            .unwrap();
+        let a = world.add_entity(());
+        let a1 = world.add_entity((ChildOf(a, Ordered::hinted(1)),));
+        let a2 = world.add_entity((ChildOf(a1, Ordered::hinted(2)),));
 
         // Run the indexing workload
         world.run_default().unwrap();
 
         // Delete the first and last siblings
-        world
-            .run(|mut vm_child_of: ViewMut<ChildOf>| {
-                vm_child_of.delete(a1);
-            })
-            .unwrap();
+        world.delete_component::<(ChildOf,)>(a1);
 
         // Run the indexing workload
         world.run_default().unwrap();
@@ -620,13 +539,13 @@ mod tests {
         // test inserting & overwriting after deleting
 
         // a2 updated to ord 7, a1 child of a8
-        let (a8,) = app.run(
+        let a8 = app.run(
             |mut entities: EntitiesViewMut, mut vm_child_of: ViewMut<ChildOf>| {
                 (&mut vm_child_of).get(a2).unwrap().1 = Ordered::hinted(7);
                 let a8 = entities.add_entity(&mut vm_child_of, ChildOf(a, Ordered::hinted(8)));
                 (&mut vm_child_of).get(a1).unwrap().0 = a8;
 
-                (a8,)
+                a8
             },
         );
 
