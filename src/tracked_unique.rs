@@ -6,9 +6,9 @@ use crate::prelude::*;
 use core::any::type_name;
 use std::{fmt, ops::Deref, ops::DerefMut};
 
-pub struct TrackedValue<T: 'static>(InnerTrackedState, T);
+pub struct TrackedValue<T>(InnerTrackedState, T);
 
-pub struct Tracked<'a, T: 'static>(UniqueView<'a, TrackedValue<T>>);
+pub struct Tracked<'a, T>(UniqueView<'a, TrackedValue<T>>);
 
 pub struct TrackedBorrower<T>(T);
 
@@ -42,9 +42,9 @@ unsafe impl<'a, T: 'static + Send + Sync> BorrowInfo for Tracked<'a, T> {
     }
 }
 
-pub struct TrackedMut<'a, T: 'static>(UniqueViewMut<'a, TrackedValue<T>>);
+pub struct TrackedMut<'a, T>(UniqueViewMut<'a, TrackedValue<T>>);
 
-pub struct TrackedMutBorrower<T: 'static>(T);
+pub struct TrackedMutBorrower<T>(T);
 
 impl<'a, T: 'static + Send + Sync> IntoBorrow for TrackedMut<'a, T> {
     type Borrow = TrackedMutBorrower<T>;
@@ -102,7 +102,7 @@ impl<T> Tracked<'_, T> {
     }
 }
 
-impl<T: 'static> Deref for Tracked<'_, T> {
+impl<T> Deref for Tracked<'_, T> {
     type Target = T;
 
     #[inline(always)]
@@ -111,7 +111,7 @@ impl<T: 'static> Deref for Tracked<'_, T> {
     }
 }
 
-impl<T: 'static> Deref for TrackedMut<'_, T> {
+impl<T> Deref for TrackedMut<'_, T> {
     type Target = T;
 
     #[inline(always)]
@@ -120,7 +120,7 @@ impl<T: 'static> Deref for TrackedMut<'_, T> {
     }
 }
 
-impl<T: 'static> DerefMut for TrackedMut<'_, T> {
+impl<T> DerefMut for TrackedMut<'_, T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut T {
         self.0 .0 = InnerTrackedState::Modified;
@@ -128,31 +128,31 @@ impl<T: 'static> DerefMut for TrackedMut<'_, T> {
     }
 }
 
-impl<T: 'static> AsRef<T> for Tracked<'_, T> {
+impl<T> AsRef<T> for Tracked<'_, T> {
     fn as_ref(&self) -> &T {
-        &**self
+        &*self
     }
 }
 
-impl<T: 'static> AsRef<T> for TrackedMut<'_, T> {
+impl<T> AsRef<T> for TrackedMut<'_, T> {
     fn as_ref(&self) -> &T {
-        &**self
+        &*self
     }
 }
 
-impl<T: 'static> AsMut<T> for TrackedMut<'_, T> {
+impl<T> AsMut<T> for TrackedMut<'_, T> {
     fn as_mut(&mut self) -> &mut T {
-        &mut **self
+        &mut *self
     }
 }
 
-impl<T: 'static + fmt::Display> fmt::Display for Tracked<'_, T> {
+impl<T: fmt::Display> fmt::Display for Tracked<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
 }
 
-impl<T: 'static + fmt::Debug> fmt::Debug for Tracked<'_, T> {
+impl<T: fmt::Debug> fmt::Debug for Tracked<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
@@ -160,7 +160,7 @@ impl<T: 'static + fmt::Debug> fmt::Debug for Tracked<'_, T> {
 
 /// Add [TrackedUnique] of `T` and reset tracking at the end of every update.
 #[derive(Default)]
-pub struct TrackedUniquePlugin<T: Clone + Send + Sync + 'static>(T);
+pub struct TrackedUniquePlugin<T>(T);
 
 impl<T: Clone + Send + Sync + 'static> TrackedUniquePlugin<T> {
     pub fn new(initial_value: T) -> Self {

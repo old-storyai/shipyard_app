@@ -85,7 +85,7 @@ impl App {
                         cumulative_update_packed.associate(
                             up_type,
                             CycleWorkloadAssociations {
-                                plugins: assoc,
+                                plugins: assoc.to_vec(),
                                 workload_plugin_id: plugin_id,
                                 workload: name.clone(),
                             },
@@ -99,7 +99,7 @@ impl App {
                         cumulative_tracked_uniques.associate(
                             tracked_type,
                             CycleWorkloadAssociations {
-                                plugins: assoc,
+                                plugins: assoc.to_vec(),
                                 workload: name.clone(),
                                 workload_plugin_id: plugin_id,
                             },
@@ -108,7 +108,7 @@ impl App {
                 }
             }
 
-            names_checked.push(name.clone());
+            names_checked.push(name);
         }
 
         let mut errs = Vec::<CycleCheckError>::new();
@@ -117,12 +117,11 @@ impl App {
         errs.extend(
             cumulative_update_packed
                 .entries()
-                .into_iter()
-                .filter(|((_, _), workloads_dependent)| workloads_dependent.len() > 1)
+                .filter(|(_, workloads_dependent)| workloads_dependent.len() > 1)
                 .map(|((_, update_pack_storage_name), workloads_dependent)| {
                     CycleCheckError::UpdatePackResetInMultipleWorkloads {
                         update_pack: update_pack_storage_name,
-                        conflicts: workloads_dependent,
+                        conflicts: workloads_dependent.to_vec(),
                     }
                 }),
         );
@@ -131,12 +130,11 @@ impl App {
         errs.extend(
             cumulative_tracked_uniques
                 .entries()
-                .into_iter()
-                .filter(|((_, _), workloads_dependent)| workloads_dependent.len() > 1)
+                .filter(|(_, workloads_dependent)| workloads_dependent.len() > 1)
                 .map(|((_, tracked_unique_storage_name), workloads_dependent)| {
                     CycleCheckError::TrackedUniqueResetInMultipleWorkloads {
                         tracked_unique: tracked_unique_storage_name,
-                        conflicts: workloads_dependent,
+                        conflicts: workloads_dependent.to_vec(),
                     }
                 }),
         );
