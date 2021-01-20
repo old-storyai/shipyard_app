@@ -325,7 +325,8 @@ impl<'a> AppBuilder<'a> {
             .is_first()
         {
             self.app.world.borrow::<ViewMut<T>>().unwrap().update_pack();
-            self.resets.push(system!(reset_update_pack::<T>));
+            self.resets
+                .push(reset_update_pack::<T>.into_workload_system().unwrap());
         }
 
         self
@@ -340,7 +341,8 @@ impl<'a> AppBuilder<'a> {
             .associate_plugin::<T>(&self.track_current_plugin, reason)
             .is_first()
         {
-            self.resets.push(system!(reset_tracked_unique::<T>));
+            self.resets
+                .push(reset_tracked_unique::<T>.into_workload_system().unwrap());
         }
 
         self
@@ -443,8 +445,8 @@ impl<'a> AppBuilder<'a> {
     }
 
     #[track_caller]
-    pub fn add_system(&mut self, system: WorkloadSystem) -> &mut Self {
-        self.systems.push(system);
+    pub fn add_system<B, R, S: IntoWorkloadSystem<B, R>>(&mut self, system: S) -> &mut Self {
+        self.systems.push(system.into_workload_system().unwrap());
 
         self
     }

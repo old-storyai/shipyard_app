@@ -34,7 +34,7 @@ impl Plugin for TreePlugin {
     fn build(&self, app: &mut AppBuilder) {
         // needs direct update pack since TreePlugin clears updates on its own.
         app.update_pack::<ChildOf>("update in response to ChildOf changes")
-            .add_system(system!(indexing::tree_indexing));
+            .add_system(&indexing::tree_indexing);
     }
 }
 
@@ -57,11 +57,11 @@ mod tests {
         let mut indexing = WorkloadBuilder::new("indexing");
 
         indexing
-            .with_system(system!(indexing::tree_indexing))
-            .with_system(system!(|mut vm_child_of: ViewMut<ChildOf>| {
+            .with_system(&indexing::tree_indexing)
+            .with_system(&|mut vm_child_of: ViewMut<ChildOf>| {
                 vm_child_of.clear_all_inserted_and_modified();
                 vm_child_of.take_deleted();
-            }))
+            })
             .add_to_world(&world)
             .unwrap();
 
@@ -497,10 +497,10 @@ mod tests {
         });
 
         WorkloadBuilder::new("default")
-            .with_system(system!(indexing::tree_indexing))
-            .with_system(system!(|mut vm_child_of: ViewMut<ChildOf>| {
+            .with_system(&indexing::tree_indexing)
+            .with_system(&|mut vm_child_of: ViewMut<ChildOf>| {
                 vm_child_of.clear_all_inserted_and_modified();
-            }))
+            })
             .add_to_world(&app.world)
             .unwrap();
 

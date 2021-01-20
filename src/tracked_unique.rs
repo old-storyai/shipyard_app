@@ -8,18 +8,31 @@ use std::{fmt, ops::Deref, ops::DerefMut};
 
 pub struct TrackedValue<T: 'static>(InnerTrackedState, T);
 
-pub struct TrackedMut<'a, T: 'static>(UniqueViewMut<'a, TrackedValue<T>>);
 pub struct Tracked<'a, T: 'static>(UniqueView<'a, TrackedValue<T>>);
 
-impl<'a, T: 'static + Send + Sync> Borrow<'a> for Tracked<'a, T> {
-    fn borrow(
-        all_storages: &'a AllStorages,
-        all_borrow: Option<SharedBorrow<'a>>,
-    ) -> Result<Self, error::GetStorage>
+pub struct TrackedBorrower<T>(T);
+
+impl<T: 'static + Send + Sync> IntoBorrow for Tracked<'_, T> {
+    type Borrow = TrackedBorrower<T>;
+}
+
+impl<'a, T: 'static + Send + Sync> Borrow<'a> for TrackedBorrower<T> {
+    type View = Tracked<'a, T>;
+
+    fn borrow(world: &'a World) -> Result<Self::View, error::GetStorage>
     where
         Self: Sized,
     {
-        Ok(Tracked(Borrow::borrow(all_storages, all_borrow)?))
+        Ok(Tracked(world.borrow()?))
+    }
+}
+
+impl<'a, T: 'static + Send + Sync> AllStoragesBorrow<'a> for TrackedBorrower<T> {
+    fn all_borrow(all_storages: &'a AllStorages) -> Result<Self::View, error::GetStorage>
+    where
+        Self: Sized,
+    {
+        Ok(Tracked(all_storages.borrow()?))
     }
 }
 
@@ -29,15 +42,31 @@ unsafe impl<'a, T: 'static + Send + Sync> BorrowInfo for Tracked<'a, T> {
     }
 }
 
-impl<'a, T: 'static + Send + Sync> Borrow<'a> for TrackedMut<'a, T> {
-    fn borrow(
-        all_storages: &'a AllStorages,
-        all_borrow: Option<SharedBorrow<'a>>,
-    ) -> Result<Self, error::GetStorage>
+pub struct TrackedMut<'a, T: 'static>(UniqueViewMut<'a, TrackedValue<T>>);
+
+pub struct TrackedMutBorrower<T: 'static>(T);
+
+impl<'a, T: 'static + Send + Sync> IntoBorrow for TrackedMut<'a, T> {
+    type Borrow = TrackedMutBorrower<T>;
+}
+
+impl<'a, T: 'static + Send + Sync> Borrow<'a> for TrackedMutBorrower<T> {
+    type View = TrackedMut<'a, T>;
+
+    fn borrow(world: &'a World) -> Result<Self::View, error::GetStorage>
     where
         Self: Sized,
     {
-        Ok(TrackedMut(Borrow::borrow(all_storages, all_borrow)?))
+        Ok(TrackedMut(world.borrow()?))
+    }
+}
+
+impl<'a, T: 'static + Send + Sync> AllStoragesBorrow<'a> for TrackedMutBorrower<T> {
+    fn all_borrow(all_storages: &'a AllStorages) -> Result<Self::View, error::GetStorage>
+    where
+        Self: Sized,
+    {
+        Ok(TrackedMut(all_storages.borrow()?))
     }
 }
 
