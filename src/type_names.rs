@@ -19,6 +19,6 @@ impl TypeNames {
     }
 
     pub fn lookup_name(&self, type_id: &TypeId) -> Option<&'static str> {
-        self.0.borrow().get(type_id).map(|a| *a as &'static str)
+        self.0.borrow().get(type_id).copied()
     }
 }

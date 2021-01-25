@@ -47,13 +47,12 @@ pub(crate) struct TypeIdBuckets<T> {
     pub(crate) type_plugins_lookup: HashMap<TypeId, Vec<T>>,
 }
 
-impl<T: std::fmt::Debug + Clone> std::fmt::Debug for TypeIdBuckets<T> {
+impl<T: std::fmt::Debug> std::fmt::Debug for TypeIdBuckets<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
             .entry(&"association", &self.name)
             .entries(
                 self.entries()
-                    .into_iter()
                     .map(|((_, name), associated)| (name, associated)),
             )
             .finish()
@@ -80,18 +79,17 @@ impl<T> TypeIdBuckets<T> {
     }
 }
 
-impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
-    pub(crate) fn entries(&self) -> Vec<((TypeId, &'static str), Vec<T>)> {
-        self.type_plugins_lookup
-            .iter()
-            .map(|(id, associations)| -> ((TypeId, &'static str), Vec<T>) {
+impl<T: std::fmt::Debug> TypeIdBuckets<T> {
+    pub(crate) fn entries(&self) -> impl Iterator<Item = ((TypeId, &'static str), &[T])> + '_ {
+        self.type_plugins_lookup.iter().map(
+            move |(id, associations)| -> ((TypeId, &'static str), &[T]) {
                 let name = self
                     .track_type_names
                     .lookup_name(&id)
                     .expect("all type ids with associations have a name saved");
-                ((*id, name), associations.to_vec())
-            })
-            .collect()
+                ((*id, name), associations)
+            },
+        )
     }
 
     pub(crate) fn associate_type<U: 'static>(&mut self, assoc: T) -> AssociateResult {
@@ -231,9 +229,9 @@ pub struct AppWorkloadInfo {
 }
 
 #[derive(Clone)]
-pub(crate) struct Blind<T: Clone + 'static>(pub T);
+pub(crate) struct Blind<T>(pub T);
 
-impl<T: Clone + 'static> std::fmt::Debug for Blind<T> {
+impl<T> std::fmt::Debug for Blind<T> {
     fn fmt(&self, mut f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(&mut f, "Blind<{}>", type_name::<T>())
     }
@@ -246,7 +244,7 @@ impl AppWorkload {
         for workload_name in self.names.iter() {
             let span = trace_span!("AppWorkload::run", ?workload_name);
             let _span = span.enter();
-            app.world.run_workload(&workload_name).unwrap();
+            app.world.run_workload(workload_name).unwrap();
         }
     }
 }
@@ -294,17 +292,10 @@ impl<'a> AppBuilder<'a> {
             signature,
         } = self;
 
-        let mut update_workload = systems.into_iter().fold(
-            WorkloadBuilder::new(update_stage.clone()),
-            |mut acc: WorkloadBuilder, system: WorkloadSystem| {
-                acc.with_system(system);
-                acc
-            },
-        );
+        let mut update_workload = WorkloadBuilder::new(update_stage.clone());
 
-        for reset_system in resets {
-            update_workload.with_system(reset_system);
-        }
+        update_workload.extend(systems);
+        update_workload.extend(resets);
 
         let info = update_workload.add_to_world_with_info(&app.world).unwrap();
         (
@@ -337,7 +328,8 @@ impl<'a> AppBuilder<'a> {
             .is_first()
         {
             self.app.world.borrow::<ViewMut<T>>().unwrap().update_pack();
-            self.resets.push(system!(reset_update_pack::<T>));
+            self.resets
+                .push(reset_update_pack::<T>.into_workload_system().unwrap());
         }
 
         self
@@ -352,7 +344,8 @@ impl<'a> AppBuilder<'a> {
             .associate_plugin::<T>(&self.track_current_plugin, reason)
             .is_first()
         {
-            self.resets.push(system!(reset_tracked_unique::<T>));
+            self.resets
+                .push(reset_tracked_unique::<T>.into_workload_system().unwrap());
         }
 
         self
@@ -455,8 +448,8 @@ impl<'a> AppBuilder<'a> {
     }
 
     #[track_caller]
-    pub fn add_system(&mut self, system: WorkloadSystem) -> &mut Self {
-        self.systems.push(system);
+    pub fn add_system<B, R, S: IntoWorkloadSystem<B, R>>(&mut self, system: S) -> &mut Self {
+        self.systems.push(system.into_workload_system().unwrap());
 
         self
     }

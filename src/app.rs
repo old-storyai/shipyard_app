@@ -7,7 +7,6 @@ use crate::{
 use shipyard::*;
 use tracing::trace_span;
 
-#[allow(clippy::needless_doctest_main)]
 /// Containers of app logic and data
 pub struct App {
     pub world: World,
@@ -32,7 +31,7 @@ impl App {
     #[track_caller]
     pub fn add_plugin_workload<P>(&mut self, plugin: P) -> AppWorkload
     where
-        P: Plugin + 'static,
+        P: Plugin,
     {
         self.add_plugin_workload_with_info(plugin).0
     }
@@ -40,7 +39,7 @@ impl App {
     #[track_caller]
     pub fn add_plugin_workload_with_info<P>(&mut self, plugin: P) -> (AppWorkload, AppWorkloadInfo)
     where
-        P: Plugin + 'static,
+        P: Plugin,
     {
         let workload_name = type_name::<P>();
         let workload_type_id = TypeId::of::<P>();
