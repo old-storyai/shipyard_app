@@ -1,6 +1,8 @@
-use std::{any::TypeId, borrow::Cow, collections::HashSet};
+use std::{any::TypeId, borrow::Cow, collections::HashSet, rc::Rc};
 
-use crate::{App, AppWorkload, AppWorkloadInfo, PluginAssociated, TypeIdBuckets};
+use crate::{
+    App, AppWorkload, AppWorkloadInfo, PluginAssociated, TypeIdBuckets, WorkloadSignature,
+};
 
 /// Associations made by this workload which includes the list of plugins and their reasons associated.
 ///
@@ -34,6 +36,34 @@ pub enum CycleCheckError {
     },
 }
 
+pub struct CycleSummary {
+    cycle_order: Vec<Cow<'static, str>>,
+    workload_info: Vec<CycleWorkloadSummary>,
+}
+
+pub struct CycleWorkloadSummary {
+    name: Cow<'static, str>,
+    signature: Rc<WorkloadSignature>,
+}
+
+impl std::fmt::Debug for CycleSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cycle")
+            .field("order", &self.cycle_order)
+            .field("workloads", &self.workload_info)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for CycleWorkloadSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(&self.name)
+            .field("update_packs", &self.signature.track_update_packed)
+            .field("tracks_uniques", &self.signature.track_tracked_uniques)
+            .finish()
+    }
+}
+
 impl App {
     /// Check the ordering of these workloads to check for conflicts.
     ///
@@ -42,7 +72,7 @@ impl App {
     pub fn add_cycle(
         &mut self,
         cycle: Vec<(AppWorkload, AppWorkloadInfo)>,
-    ) -> Result<AppWorkload, Vec<CycleCheckError>> {
+    ) -> Result<(AppWorkload, CycleSummary), Vec<CycleCheckError>> {
         // to track the plugins added so far (so we can avoid them accidentally conflicting with themselves)
         let mut workload_plugins_added = HashSet::new();
         let mut names_checked = Vec::new();
@@ -55,6 +85,11 @@ impl App {
             &self.type_names,
         );
 
+        let mut summary = CycleSummary {
+            cycle_order: Vec::new(),
+            workload_info: Vec::new(),
+        };
+
         for (
             _workloads,
             AppWorkloadInfo {
@@ -66,6 +101,8 @@ impl App {
             },
         ) in cycle
         {
+            summary.cycle_order.push(name.clone());
+
             let is_unique_workload = if workload_plugins_added.contains(&plugin_id) {
                 // If a cycle has the same workload multiple times, we don't want to get a
                 // tracking conflict requirement with itself.
@@ -78,6 +115,11 @@ impl App {
 
             // We do not want to double count plugins so we can later check for conflicts
             if is_unique_workload {
+                summary.workload_info.push(CycleWorkloadSummary {
+                    name: name.clone(),
+                    signature: signature.clone(),
+                });
+
                 // account for update packs
                 for ((up_type, _), assoc) in signature.track_update_packed.entries() {
                     if !assoc.is_empty() {
@@ -145,9 +187,12 @@ impl App {
             return Err(errs);
         }
 
-        Ok(AppWorkload {
-            names: names_checked,
-        })
+        Ok((
+            AppWorkload {
+                names: names_checked,
+            },
+            summary,
+        ))
     }
 }
 

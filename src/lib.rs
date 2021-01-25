@@ -11,6 +11,8 @@ pub use plugin::*;
 pub use shipyard::*;
 pub use tracked_unique::*;
 
+pub use app_add_cycle::CycleSummary;
+
 pub mod prelude {
     pub use crate::{
         app::App,

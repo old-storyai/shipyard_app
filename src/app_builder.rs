@@ -21,10 +21,22 @@ pub static DEFAULT_WORKLOAD_NAME: &str = "update";
 /// Used for defaultly created workloads
 pub struct DefaultWorkloadPlugin;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PluginAssociated {
     pub plugin: PluginId,
     pub reason: &'static str,
+}
+
+impl std::fmt::Debug for PluginAssociated {
+    fn fmt(&self, mut f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // shorten plugin name for printing
+        let plugin_name_short = format!("{:?}", self.plugin)
+            .split("::")
+            .last()
+            .unwrap_or_else(|| "<error>")
+            .replace(")", "");
+        write!(&mut f, "{}: {}", &plugin_name_short, &self.reason,)
+    }
 }
 
 pub(crate) type PluginsAssociatedMap = TypeIdBuckets<PluginAssociated>;
