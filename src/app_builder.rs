@@ -82,7 +82,8 @@ impl<T> TypeIdBuckets<T> {
 
 impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
     pub(crate) fn entries(&self) -> Vec<((TypeId, &'static str), Vec<T>)> {
-        self.type_plugins_lookup
+        let mut ordered = self
+            .type_plugins_lookup
             .iter()
             .map(|(id, associations)| -> ((TypeId, &'static str), Vec<T>) {
                 let name = self
@@ -91,7 +92,11 @@ impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
                     .expect("all type ids with associations have a name saved");
                 ((*id, name), associations.to_vec())
             })
-            .collect()
+            .collect::<Vec<_>>();
+
+        ordered.sort_by_key(|a| a.0 .1);
+
+        ordered
     }
 
     pub(crate) fn associate_type<U: 'static>(&mut self, assoc: T) -> AssociateResult {
