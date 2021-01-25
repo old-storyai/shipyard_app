@@ -33,7 +33,7 @@ impl std::fmt::Debug for PluginAssociated {
         let plugin_name_short = format!("{:?}", self.plugin)
             .split("::")
             .last()
-            .unwrap_or_else(|| "<error>")
+            .unwrap_or("<Error: Plugin has no names>")
             .replace(")", "");
         write!(&mut f, "{}: {}", &plugin_name_short, &self.reason,)
     }
