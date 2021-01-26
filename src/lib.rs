@@ -5,6 +5,7 @@ mod app_builder;
 mod plugin;
 mod tracked_unique;
 mod type_names;
+mod update_one_to_one;
 
 pub use add_distinct::*;
 pub use app::*;
@@ -12,6 +13,7 @@ pub use app_builder::*;
 pub use plugin::*;
 pub use shipyard::*;
 pub use tracked_unique::*;
+pub use update_one_to_one::*;
 
 pub use app_add_cycle::CycleSummary;
 
@@ -22,6 +24,7 @@ pub mod prelude {
         app_builder::{AppBuilder, AppWorkload},
         plugin::Plugin,
         tracked_unique::{Tracked, TrackedMut},
+        update_one_to_one::UpdateOneToOne,
     };
     pub use shipyard::*;
 }
