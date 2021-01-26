@@ -1,8 +1,10 @@
 [package]
-authors = ["Cole Lawrence <cole@colelawrence.com>"]
+authors = ["Storyscript Team <team@storyscript.com>"]
 edition = "2018"
+license = "MIT OR Apache-2.0"
 name = "shipyard_app"
 version = "0.1.0"
+readme = "README.md"
 
 [dependencies]
 shipyard = {version = "*", path = "../shipyard", features = [], default-features = false}
