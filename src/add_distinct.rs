@@ -18,7 +18,7 @@ impl<T: 'static + PartialEq> AddDistinct for ViewMut<'_, T> {
         }
 
         self.add_component_unchecked(entity, component);
-        return true;
+        true
     }
 }
 
@@ -35,7 +35,7 @@ macro_rules! impl_add_distinct {
                 $(
                     self.$index.add_component_unchecked(entity, component.$index);
                 )+
-                return true;
+                true
             }
         }
     }
