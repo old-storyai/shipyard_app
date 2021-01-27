@@ -21,34 +21,3 @@ impl<T: 'static + PartialEq> AddDistinct for ViewMut<'_, T> {
         true
     }
 }
-
-macro_rules! impl_add_distinct {
-    ($(($type: ident, $index: tt))+) => {
-        impl<$($type: 'static + PartialEq),+> AddDistinct for ($(&mut ViewMut<'_, $type>,)+) {
-            fn add_distinct(&mut self, entity: EntityId, component: Self::Component) -> bool {
-                if let Ok(has_value) = ($(&*self.$index,)+).get(entity) {
-                    if ($(&component.$index,)+) == has_value {
-                        return false;
-                    }
-                }
-
-                $(
-                    self.$index.add_component_unchecked(entity, component.$index);
-                )+
-                true
-            }
-        }
-    }
-}
-
-macro_rules! add_distinct {
-    ($(($type: ident, $index: tt))+; ($type1: ident, $index1: tt) $(($queue_type: ident, $queue_index: tt))*) => {
-        impl_add_distinct![$(($type, $index))*];
-        add_distinct![$(($type, $index))* ($type1, $index1); $(($queue_type, $queue_index))*];
-    };
-    ($(($type: ident, $index: tt))+;) => {
-        impl_add_distinct![$(($type, $index))*];
-    }
-}
-
-add_distinct![(A, 0); (B, 1) (C, 2) (D, 3)];
