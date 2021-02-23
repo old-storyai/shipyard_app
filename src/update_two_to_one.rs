@@ -55,6 +55,7 @@ where
     U: PartialEq + Sync + Send + 'static,
 {
     /// Delete if either component is not present or return `None`
+    #[track_caller]
     pub fn update_or_delete<F>(self, mut update_fn: F)
     where
         F: FnMut(EntityId, &T1, &T2) -> Option<U>,

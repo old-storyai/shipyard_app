@@ -97,6 +97,7 @@ where
     T: Sync + Send + 'static,
     U: PartialEq + Sync + Send + 'static,
 {
+    #[track_caller]
     pub fn update<F>(self, mut update_fn: F)
     where
         F: FnMut(EntityId, &T) -> U,
@@ -104,6 +105,7 @@ where
         self.update_or_ignore(move |e, t| Some(update_fn(e, t)))
     }
 
+    #[track_caller]
     pub fn update_or_ignore<F>(self, mut update_fn: F)
     where
         F: FnMut(EntityId, &T) -> Option<U>,
@@ -130,6 +132,7 @@ where
         }
     }
 
+    #[track_caller]
     pub fn update_or_delete<F>(self, mut update_fn: F)
     where
         F: FnMut(EntityId, &T) -> Option<U>,
