@@ -8,7 +8,7 @@ use std::{
     borrow::Cow,
     collections::hash_map::Entry,
     collections::HashMap,
-    rc::Rc,
+    sync::Arc,
 };
 use tracing::*;
 
@@ -228,7 +228,7 @@ pub struct AppWorkloadInfo {
     pub(crate) type_names: Blind<TypeNames>,
     pub(crate) batch_info: Vec<info::BatchInfo>,
     /// Self-imposed constraints declared by the workload
-    pub(crate) signature: Rc<WorkloadSignature>,
+    pub(crate) signature: Arc<WorkloadSignature>,
     /// Derived from this plugin
     pub(crate) plugin_id: TypeId,
     /// Workload name assigned in the world
@@ -322,7 +322,7 @@ impl<'a> AppBuilder<'a> {
                 type_names: Blind(app.type_names.clone()),
                 plugin_id,
                 name: info.name,
-                signature: Rc::new(signature),
+                signature: Arc::new(signature),
             },
         )
     }

@@ -1,4 +1,4 @@
-use std::{any::TypeId, borrow::Cow, collections::HashSet, rc::Rc};
+use std::{any::TypeId, borrow::Cow, collections::HashSet, sync::Arc};
 
 use crate::{
     App, AppWorkload, AppWorkloadInfo, PluginAssociated, TypeIdBuckets, WorkloadSignature,
@@ -43,7 +43,7 @@ pub struct CycleSummary {
 
 pub struct CycleWorkloadSummary {
     name: Cow<'static, str>,
-    signature: Rc<WorkloadSignature>,
+    signature: Arc<WorkloadSignature>,
 }
 
 impl std::fmt::Debug for CycleSummary {
