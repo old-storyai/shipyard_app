@@ -4,7 +4,7 @@
 
 This allows for codebases to more easily divide up many systems and workloads without having to declare all systems in one big workload builder in the root of an application.
 
-Example [from test/tree.rs](https://github.com/storyscript/shipyard_app/blob/master/src/test/tree.rs)
+Example [from test/tree.rs](https://github.com/storyai/shipyard_app/blob/master/src/test/tree.rs)
 
 ```rust
 use shipyard_app::{AppBuilder, Plugin};
