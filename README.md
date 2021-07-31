@@ -8,7 +8,6 @@ Example [from test/tree.rs](https://github.com/storyai/shipyard_app/blob/master/
 
 ```rust
 use shipyard_app::{AppBuilder, Plugin};
-use shipyard::{system, WorkloadBuilder};
 ...
 
 /// Registers
@@ -18,7 +17,7 @@ pub struct TreePlugin;
 impl Plugin for TreePlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.update_pack::<ChildOf>("update in response to ChildOf changes");
-        app.add_system(system!(indexing::tree_indexing));
+        app.add_system(indexing::tree_indexing);
     }
 }
 ```

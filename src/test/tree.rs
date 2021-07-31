@@ -24,7 +24,8 @@ pub use indexing::{ParentIndex, SiblingIndex};
 pub use node::*;
 pub use reordering::{MoveCmd, MoveToPlace};
 
-pub type UniqueMoveCommands<'a> = UniqueViewMut<'a, Vec<MoveCmd>>;
+#[derive(Component)]
+pub struct MoveCommands(Vec<MoveCmd>);
 
 /// Registers
 #[derive(Default)]
@@ -34,7 +35,7 @@ impl Plugin for TreePlugin {
     fn build(&self, app: &mut AppBuilder) {
         // needs direct update pack since TreePlugin clears updates on its own.
         app.update_pack::<ChildOf>("update in response to ChildOf changes")
-            .add_system(system!(indexing::tree_indexing));
+            .add_system(indexing::tree_indexing);
     }
 }
 
@@ -46,22 +47,16 @@ mod tests {
     fn setup_world_with_index_system() -> World {
         // Create a new world
         let world = World::new();
-        // Track modifications to the child_of components
-        world
-            .run(|mut vm_child_of: ViewMut<ChildOf>| {
-                vm_child_of.update_pack();
-            })
-            .unwrap();
 
         // Add the indexing workload
-        let mut indexing = WorkloadBuilder::new("indexing");
+        let indexing = WorkloadBuilder::new("indexing");
 
         indexing
-            .with_system(system!(indexing::tree_indexing))
-            .with_system(system!(|mut vm_child_of: ViewMut<ChildOf>| {
+            .with_system(indexing::tree_indexing)
+            .with_system(|mut vm_child_of: ViewMut<ChildOf>| {
                 vm_child_of.clear_all_inserted_and_modified();
                 vm_child_of.take_deleted();
-            }))
+            })
             .add_to_world(&world)
             .unwrap();
 
@@ -492,15 +487,11 @@ mod tests {
     fn test_indexing() {
         let app = App::new();
 
-        app.run(|mut vm_child_of: ViewMut<ChildOf>| {
-            vm_child_of.update_pack();
-        });
-
         WorkloadBuilder::new("default")
-            .with_system(system!(indexing::tree_indexing))
-            .with_system(system!(|mut vm_child_of: ViewMut<ChildOf>| {
+            .with_system(indexing::tree_indexing)
+            .with_system(|mut vm_child_of: ViewMut<ChildOf>| {
                 vm_child_of.clear_all_inserted_and_modified();
-            }))
+            })
             .add_to_world(&app.world)
             .unwrap();
 

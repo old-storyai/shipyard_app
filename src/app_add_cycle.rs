@@ -201,7 +201,10 @@ mod update_pack_tests {
     use std::any::type_name;
 
     use super::*;
+    use shipyard::Component;
 
+    #[derive(Component)]
+    #[track(All)]
     struct A;
     struct RxA1;
     struct RxA2;

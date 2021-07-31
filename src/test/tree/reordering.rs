@@ -19,13 +19,13 @@ pub enum MoveToPlace {
 /// TODO: If there are more than one command, how are we re-indexing to heal the ParentIndex and SiblingIndex?
 pub fn tree_reordering(
     (mut commands, mut vm_child_of, v_parent_index, v_sibling_index): (
-        UniqueMoveCommands,
+        UniqueViewMut<MoveCommands>,
         ViewMut<ChildOf>,
         View<ParentIndex>,
         View<SiblingIndex>,
     ),
 ) {
-    let commands = commands.drain(..).collect::<Vec<_>>();
+    let commands = commands.0.drain(..).collect::<Vec<_>>();
     if commands.len() > 1 {
         warn!(
             ?commands,

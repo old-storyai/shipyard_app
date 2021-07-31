@@ -7,7 +7,7 @@ readme = "README.md"
 version = "0.1.0"
 
 [dependencies]
-shipyard = {version = "*", path = "../shipyard"}
+shipyard = {version = "*", path = "../shipyard", features = ["proc"]}
 tracing = "0.1"
 
 [dev-dependencies]

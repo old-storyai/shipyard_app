@@ -1,6 +1,5 @@
 use crate::{
     app::App, plugin::Plugin, tracked_unique::reset_tracked_unique, type_names::TypeNames,
-    TrackedValue,
 };
 use shipyard::*;
 use std::{
@@ -137,7 +136,7 @@ impl<T: Clone + std::fmt::Debug> TypeIdBuckets<T> {
 
 impl TypeIdBuckets<PluginAssociated> {
     /// Return new number of plugins associated
-    pub(crate) fn associate_plugin<Type: 'static>(
+    pub(crate) fn associate_plugin<Type: Component>(
         &mut self,
         plugin: &PluginId,
         reason: &'static str,
@@ -301,17 +300,14 @@ impl<'a> AppBuilder<'a> {
 
         let mut update_workload = systems.into_iter().fold(
             WorkloadBuilder::new(update_stage.clone()),
-            |mut acc: WorkloadBuilder, system: WorkloadSystem| {
-                acc.with_system(system);
-                acc
-            },
+            |acc: WorkloadBuilder, system: WorkloadSystem| acc.with_system(system),
         );
 
         for reset_system in resets {
-            update_workload.with_system(reset_system);
+            update_workload = update_workload.with_system(reset_system);
         }
 
-        let info = update_workload.add_to_world_with_info(&app.world).unwrap();
+        let info = update_workload.add_to_world(&app.world).unwrap();
         (
             AppWorkload {
                 names: vec![update_stage],
@@ -334,15 +330,22 @@ impl<'a> AppBuilder<'a> {
 
     /// Update component `T`'s storage to be update_pack, and add [shipyard::sparse_set::SparseSet::clear_all_inserted_and_modified] as the last system.
     #[track_caller]
-    pub fn update_pack<T: 'static + Send + Sync>(&mut self, reason: &'static str) -> &mut Self {
+    pub fn update_pack<T: Component<Tracking = track::All> + Send + Sync>(
+        &mut self,
+        reason: &'static str,
+    ) -> &mut Self {
         if self
             .signature
             .track_update_packed
             .associate_plugin::<T>(&self.track_current_plugin, reason)
             .is_first()
         {
-            self.app.world.borrow::<ViewMut<T>>().unwrap().update_pack();
-            self.resets.push(system!(reset_update_pack::<T>));
+            self.app.world.borrow::<ViewMut<T>>().unwrap();
+            self.resets.push(
+                reset_update_pack::<T>
+                    .into_workload_system()
+                    .expect("system to be valid"),
+            );
         }
 
         self
@@ -350,14 +353,21 @@ impl<'a> AppBuilder<'a> {
 
     /// Declare dependency on `[crate::Tracked]<T>` and add "reset tracked" as the last system.
     #[track_caller]
-    pub fn tracks<T: 'static + Send + Sync>(&mut self, reason: &'static str) -> &mut Self {
+    pub fn tracks<T: Component<Tracking = track::All> + Send + Sync>(
+        &mut self,
+        reason: &'static str,
+    ) -> &mut Self {
         if self
             .signature
             .track_tracked_uniques
             .associate_plugin::<T>(&self.track_current_plugin, reason)
             .is_first()
         {
-            self.resets.push(system!(reset_tracked_unique::<T>));
+            self.resets.push(
+                reset_tracked_unique::<T>
+                    .into_workload_system()
+                    .expect("system to be valid"),
+            );
         }
 
         self
@@ -365,7 +375,7 @@ impl<'a> AppBuilder<'a> {
 
     /// Add a unique component
     #[track_caller]
-    pub fn add_unique<T>(&mut self, component: T) -> &mut Self
+    pub fn add_unique<T: Component>(&mut self, component: T) -> &mut Self
     where
         T: Send + Sync + 'static,
     {
@@ -390,7 +400,10 @@ impl<'a> AppBuilder<'a> {
     ///
     /// Accessible through the [crate::Tracked] and [crate::TrackedMut] views.
     #[track_caller]
-    pub fn add_tracked_value<T>(&mut self, component: T) -> &mut Self
+    pub fn add_tracked_value<T: Component<Tracking = track::All>>(
+        &mut self,
+        component: T,
+    ) -> &mut Self
     where
         T: Send + Sync + 'static,
     {
@@ -400,10 +413,7 @@ impl<'a> AppBuilder<'a> {
             .associate_plugin::<T>(&self.track_current_plugin, "<not provided>")
             .is_first()
         {
-            self.app
-                .world
-                .add_unique(TrackedValue::new(component))
-                .unwrap();
+            self.app.world.add_unique(component).unwrap();
         } else {
             warn!(
                 "Tracked unique({}) already provided by another plugin in the plugin workload.",
@@ -420,7 +430,7 @@ impl<'a> AppBuilder<'a> {
     #[track_caller]
     pub fn depends_on_unique<T>(&mut self, dependency_reason: &'static str) -> &mut Self
     where
-        T: Send + Sync + 'static,
+        T: Send + Sync + Component,
     {
         self.signature
             .track_unique_dependencies
@@ -460,17 +470,23 @@ impl<'a> AppBuilder<'a> {
     }
 
     #[track_caller]
-    pub fn add_system(&mut self, system: WorkloadSystem) -> &mut Self {
-        self.systems.push(system);
+    pub fn add_system<B, R, S: IntoWorkloadSystem<B, R>>(&mut self, system: S) -> &mut Self {
+        self.systems
+            .push(system.into_workload_system().expect("system to be valid"));
 
         self
     }
 
     /// Ensure that this system is among the absolute last systems
     #[track_caller]
-    pub fn add_reset_system(&mut self, system: WorkloadSystem, reason: &str) -> &mut Self {
+    pub fn add_reset_system<B, R, S: IntoWorkloadSystem<B, R>>(
+        &mut self,
+        system: S,
+        reason: &str,
+    ) -> &mut Self {
         trace!(plugin = ?self.track_current_plugin, ?reason, "add_reset_system");
-        self.resets.push(system);
+        self.resets
+            .push(system.into_workload_system().expect("system to be valid"));
 
         self
     }
@@ -513,7 +529,7 @@ impl<'a> AppBuilder<'a> {
     }
 }
 
-fn reset_update_pack<T>(mut vm_to_clear: ViewMut<T>) {
+fn reset_update_pack<T: Component<Tracking = track::All>>(mut vm_to_clear: ViewMut<T>) {
     trace_span!("reset_update_pack", storage_name = type_name::<T>()).in_scope(|| {
         vm_to_clear.clear_all_inserted_and_modified();
         vm_to_clear.take_removed_and_deleted();
