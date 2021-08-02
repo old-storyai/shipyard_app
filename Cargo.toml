@@ -1,14 +1,14 @@
 [package]
-authors = ["Storyscript Team <team@storyscript.com>"]
+authors = ["Story.ai Team <team@story.ai>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 name = "shipyard_app"
-version = "0.1.0"
 readme = "README.md"
+version = "0.1.0"
 
 [dependencies]
-shipyard = {version = "*", path = "../shipyard", features = [], default-features = false}
+shipyard = {version = "*", path = "../shipyard", features = ["proc"]}
 tracing = "0.1"
 
 [dev-dependencies]
-tracing-subscriber = {version = "0.2", features = ["chrono", "env-filter", "fmt"]}
+tracing-subscriber = {version = "0.2", features = ["chrono", "env-filter", "fmt"], default-features = false}

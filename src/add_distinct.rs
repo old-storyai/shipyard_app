@@ -9,7 +9,7 @@ pub trait AddDistinct: AddComponent {
     fn add_distinct(&mut self, entity: EntityId, component: Self::Component) -> bool;
 }
 
-impl<T: 'static + PartialEq> AddDistinct for ViewMut<'_, T> {
+impl<T: Component + PartialEq> AddDistinct for ViewMut<'_, T> {
     fn add_distinct(&mut self, entity: EntityId, component: Self::Component) -> bool {
         if let Ok(has_value) = (&*self).get(entity) {
             if &component == has_value {

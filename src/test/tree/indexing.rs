@@ -4,7 +4,7 @@ use super::*;
 type SiblingID = (Ordered, EntityId);
 
 /// Managed by the tree_indexing system to provide more concise info for walking the tree
-#[derive(Debug)]
+#[derive(Debug, Component)]
 pub struct SiblingIndex {
     pub parent_node: EntityId,
     pub ordered_node: SiblingID,
@@ -13,7 +13,7 @@ pub struct SiblingIndex {
 }
 
 /// Managed by the tree_indexing system to provide more concise info for walking the tree
-#[derive(Debug)]
+#[derive(Debug, Component)]
 pub struct ParentIndex {
     pub children: Vec<SiblingID>,
 }
@@ -84,7 +84,7 @@ fn insert_child_of(
 ) {
     // parent: insert into list at correct location,
     // find next index and previous index and update their sibling references respectively
-    let mut parent_index = {
+    let parent_index = {
         if let Ok(parent_index) = vm_parent_index.get(parent_id) {
             parent_index
         } else {
@@ -213,7 +213,7 @@ fn unlink_child(
     };
 
     // parent: remove T from children
-    let mut parent_index = vm_parent_index.get(parent_id).unwrap();
+    let parent_index = vm_parent_index.get(parent_id).unwrap();
     parent_index.children.retain(|(_, id)| id != &child);
 
     if let Some(prev_sibling_id) = t_prev_sibling {

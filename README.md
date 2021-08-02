@@ -4,11 +4,10 @@
 
 This allows for codebases to more easily divide up many systems and workloads without having to declare all systems in one big workload builder in the root of an application.
 
-Example [from test/tree.rs](https://github.com/storyscript/shipyard_app/blob/master/src/test/tree.rs)
+Example [from test/tree.rs](https://github.com/storyai/shipyard_app/blob/master/src/test/tree.rs)
 
 ```rust
 use shipyard_app::{AppBuilder, Plugin};
-use shipyard::{system, WorkloadBuilder};
 ...
 
 /// Registers
@@ -18,7 +17,7 @@ pub struct TreePlugin;
 impl Plugin for TreePlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.update_pack::<ChildOf>("update in response to ChildOf changes");
-        app.add_system(system!(indexing::tree_indexing));
+        app.add_system(indexing::tree_indexing);
     }
 }
 ```

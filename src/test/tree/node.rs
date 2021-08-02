@@ -1,10 +1,11 @@
 #![allow(dead_code)]
-use shipyard::EntityId;
+use shipyard::{EntityId, Component};
 
 /// ChildOf is the source of truth when it comes to the structure of things in trees.
 ///
 /// .0 is parent EntityId, .1 is Ordered relative to siblings
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Component)]
+#[track(All)]
 pub struct ChildOf(pub EntityId, pub Ordered);
 
 impl ChildOf {
