@@ -163,7 +163,7 @@ macro_rules! impl_update_two_to_one {
 }
 
 impl_update_two_to_one!(
-    (Nothing, &'b mut U),
+    (Untracked, &'b mut U),
     (Insertion, &'b mut U),
     (Modification, Mut<'b, U>),
     (Deletion, &'b mut U),
