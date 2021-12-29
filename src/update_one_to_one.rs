@@ -79,7 +79,7 @@ impl<T, U> IntoBorrow for UpdateOneToOne<'_, T, U>
 where
     T: Send + Sync + Component<Tracking = track::All>,
     U: PartialEq + Send + Sync + Component,
-    <U::Tracking as track::Tracking<U>>::DeletionData: Send + Sync,
+    U::Tracking: Send + Sync,
 {
     type Borrow = UpdateOneToOneBorrower<T, U>;
 }
@@ -88,12 +88,19 @@ impl<'a, T, U> Borrow<'a> for UpdateOneToOneBorrower<T, U>
 where
     T: Send + Sync + Component<Tracking = track::All>,
     U: PartialEq + Send + Sync + Component,
-    <U::Tracking as track::Tracking<U>>::DeletionData: Send + Sync,
+    U::Tracking: Send + Sync,
 {
     type View = UpdateOneToOne<'a, T, U>;
 
-    fn borrow(world: &'a World) -> Result<Self::View, error::GetStorage> {
-        Ok(UpdateOneToOne(world.borrow()?, world.borrow()?))
+    fn borrow(
+        world: &'a World,
+        last_run: Option<u32>,
+        current: u32,
+    ) -> Result<Self::View, error::GetStorage> {
+        Ok(UpdateOneToOne(
+            <View<T> as IntoBorrow>::Borrow::borrow(world, last_run, current)?,
+            <ViewMut<U> as IntoBorrow>::Borrow::borrow(world, last_run, current)?,
+        ))
     }
 }
 

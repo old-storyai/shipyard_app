@@ -29,9 +29,9 @@ where
     T1: Send + Sync + Component,
     T2: Send + Sync + Component,
     U: PartialEq + Send + Sync + Component,
-    <T1::Tracking as track::Tracking<T1>>::DeletionData: Send + Sync,
-    <T2::Tracking as track::Tracking<T2>>::DeletionData: Send + Sync,
-    <U::Tracking as track::Tracking<U>>::DeletionData: Send + Sync,
+    T1::Tracking: Send + Sync,
+    T2::Tracking: Send + Sync,
+    U::Tracking: Send + Sync,
 {
     type Borrow = UpdateTwoToOneBorrower<T1, T2, U>;
 }
@@ -41,17 +41,21 @@ where
     T1: Send + Sync + Component,
     T2: Send + Sync + Component,
     U: PartialEq + Send + Sync + Component,
-    <T1::Tracking as track::Tracking<T1>>::DeletionData: Send + Sync,
-    <T2::Tracking as track::Tracking<T2>>::DeletionData: Send + Sync,
-    <U::Tracking as track::Tracking<U>>::DeletionData: Send + Sync,
+    T1::Tracking: Send + Sync,
+    T2::Tracking: Send + Sync,
+    U::Tracking: Send + Sync,
 {
     type View = UpdateTwoToOne<'a, T1, T2, U>;
 
-    fn borrow(world: &'a World) -> Result<Self::View, error::GetStorage> {
+    fn borrow(
+        world: &'a World,
+        last_run: Option<u32>,
+        current: u32,
+    ) -> Result<Self::View, error::GetStorage> {
         Ok(UpdateTwoToOne(
-            world.borrow()?,
-            world.borrow()?,
-            world.borrow()?,
+            <View<T1> as IntoBorrow>::Borrow::borrow(world, last_run, current)?,
+            <View<T2> as IntoBorrow>::Borrow::borrow(world, last_run, current)?,
+            <ViewMut<U> as IntoBorrow>::Borrow::borrow(world, last_run, current)?,
         ))
     }
 }

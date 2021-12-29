@@ -531,7 +531,6 @@ impl<'a> AppBuilder<'a> {
 
 fn reset_update_pack<T: Component<Tracking = track::All>>(mut vm_to_clear: ViewMut<T>) {
     trace_span!("reset_update_pack", storage_name = type_name::<T>()).in_scope(|| {
-        vm_to_clear.clear_all_inserted_and_modified();
         vm_to_clear.take_removed_and_deleted();
     });
 }
