@@ -252,6 +252,8 @@ impl AppWorkload {
             let _span = span.enter();
             app.world.run_workload(&workload_name).unwrap();
         }
+        let mut all_storages = app.world.borrow::<AllStoragesViewMut>().unwrap();
+        all_storages.clear_all_removed_or_deleted();
     }
 }
 
@@ -341,11 +343,6 @@ impl<'a> AppBuilder<'a> {
             .is_first()
         {
             self.app.world.borrow::<ViewMut<T>>().unwrap();
-            self.resets.push(
-                reset_update_pack::<T>
-                    .into_workload_system()
-                    .expect("system to be valid"),
-            );
         }
 
         self
@@ -527,10 +524,4 @@ impl<'a> AppBuilder<'a> {
         self.track_current_plugin.pop();
         self
     }
-}
-
-fn reset_update_pack<T: Component<Tracking = track::All>>(mut vm_to_clear: ViewMut<T>) {
-    trace_span!("reset_update_pack", storage_name = type_name::<T>()).in_scope(|| {
-        vm_to_clear.take_removed_and_deleted();
-    });
 }

@@ -76,10 +76,6 @@ impl App {
         // to track the plugins added so far (so we can avoid them accidentally conflicting with themselves)
         let mut workload_plugins_added = HashSet::new();
         let mut names_checked = Vec::new();
-        let mut cumulative_update_packed = TypeIdBuckets::<CycleWorkloadAssociations>::new(
-            "update packed in workloads",
-            &self.type_names,
-        );
         let mut cumulative_tracked_uniques = TypeIdBuckets::<CycleWorkloadAssociations>::new(
             "tracked uniques in workloads",
             &self.type_names,
@@ -120,20 +116,6 @@ impl App {
                     signature: signature.clone(),
                 });
 
-                // account for update packs
-                for ((up_type, _), assoc) in signature.track_update_packed.entries() {
-                    if !assoc.is_empty() {
-                        // We need to account for these tracked_uniques
-                        cumulative_update_packed.associate(
-                            up_type,
-                            CycleWorkloadAssociations {
-                                plugins: assoc,
-                                workload_plugin_id: plugin_id,
-                                workload: name.clone(),
-                            },
-                        );
-                    }
-                }
                 // account for tracked uniques
                 for ((tracked_type, _), assoc) in signature.track_tracked_uniques.entries() {
                     if !assoc.is_empty() {
@@ -154,20 +136,6 @@ impl App {
         }
 
         let mut errs = Vec::<CycleCheckError>::new();
-
-        // update pack
-        errs.extend(
-            cumulative_update_packed
-                .entries()
-                .into_iter()
-                .filter(|((_, _), workloads_dependent)| workloads_dependent.len() > 1)
-                .map(|((_, update_pack_storage_name), workloads_dependent)| {
-                    CycleCheckError::UpdatePackResetInMultipleWorkloads {
-                        update_pack: update_pack_storage_name,
-                        conflicts: workloads_dependent,
-                    }
-                }),
-        );
 
         // tracked unique
         errs.extend(
