@@ -11,6 +11,7 @@ use crate::{
 pub struct CycleWorkloadAssociations {
     workload: Cow<'static, str>,
     /// If this cycle workload is derived from a plugin, here's its [TypeId].
+    #[allow(unused)]
     workload_plugin_id: TypeId,
     /// List of plugins & their reasons for being associated
     plugins: Vec<PluginAssociated>,

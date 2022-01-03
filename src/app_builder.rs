@@ -153,6 +153,7 @@ impl TypeIdBuckets<PluginAssociated> {
 #[derive(Debug)]
 pub(crate) struct WorkloadSignature {
     /// track the plugins directly required by other plugins
+    #[allow(unused)]
     pub track_plugin_dependencies: PluginsAssociatedMap,
     /// unique type id to list of plugin type ids that provided a value for it it
     pub track_uniques_provided: PluginsAssociatedMap,
@@ -224,7 +225,9 @@ pub struct AppWorkload {
 
 #[derive(Clone, Debug)]
 pub struct AppWorkloadInfo {
+    #[allow(unused)]
     pub(crate) type_names: Blind<TypeNames>,
+    #[allow(unused)]
     pub(crate) batch_info: Vec<info::BatchInfo>,
     /// Self-imposed constraints declared by the workload
     pub(crate) signature: Arc<WorkloadSignature>,
